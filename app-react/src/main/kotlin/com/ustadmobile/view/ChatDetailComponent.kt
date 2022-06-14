@@ -7,6 +7,7 @@ import com.ustadmobile.core.view.EditButtonMode
 import com.ustadmobile.door.DoorDataSourceFactory
 import com.ustadmobile.door.ObserverFnWrapper
 import com.ustadmobile.lib.db.entities.Chat
+import com.ustadmobile.lib.db.entities.MessageRead
 import com.ustadmobile.lib.db.entities.MessageWithPerson
 import com.ustadmobile.mui.components.*
 import com.ustadmobile.mui.ext.targetInputValue
@@ -28,12 +29,8 @@ import react.Props
 import react.RBuilder
 import react.setState
 import styled.css
-import styled.styledDiv
 
 class ChatDetailComponent(props: UmProps): UstadBaseComponent<UmProps, UmState>(props), ChatDetailView {
-
-    override val viewNames: List<String>
-        get() = listOf(ChatDetailView.VIEW_NAME)
 
     private var mPresenter: ChatDetailPresenter? = null
 
@@ -69,9 +66,13 @@ class ChatDetailComponent(props: UmProps): UstadBaseComponent<UmProps, UmState>(
     override var entity: Chat? = null
         get() = field
         set(value) {
-            ustadComponentTitle = value?.chatTitle
             setState {
                 field = value
+            }
+            if(value?.chatTitle != null){
+                updateUiWithStateChangeDelay {
+                    ustadComponentTitle = value.chatTitle
+                }
             }
         }
 
@@ -79,7 +80,7 @@ class ChatDetailComponent(props: UmProps): UstadBaseComponent<UmProps, UmState>(
     override fun onCreateView() {
         super.onCreateView()
         fabManager?.visible = false
-        mPresenter = ChatDetailPresenter(this, arguments, this, di, this)
+        mPresenter = ChatDetailPresenter(this, arguments, this, di)
         mPresenter?.onCreate(mapOf())
     }
 
@@ -90,18 +91,30 @@ class ChatDetailComponent(props: UmProps): UstadBaseComponent<UmProps, UmState>(
                 +defaultPaddingTop
             }
 
-            styledDiv {
+            umItem {
                 css{
                     margin(bottom = 10.spacingUnits)
                 }
                 messages.forEach {
                     val fromMe = accountManager.activeAccount.personUid == it.messagePerson?.personUid
+                    //Update message read
+                    if(it.messageRead == null) {
+                        val messageRead = MessageRead(
+                            accountManager.activeAccount.personUid, it.messageUid,
+                            it.messageEntityUid ?: 0L
+                        )
+                        mPresenter?.updateMessageRead(messageRead)
+                        it.messageRead = messageRead
+                    }
                     renderConversationListItem(
                         !fromMe,
                         if(fromMe) getString(MessageID.you) else it.messagePerson?.fullName(),
                         it.messageText,
                         systemImpl,
-                        it.messageTimestamp
+                        accountManager,
+                        this,
+                        it.messageTimestamp,
+
                     )
                 }
             }

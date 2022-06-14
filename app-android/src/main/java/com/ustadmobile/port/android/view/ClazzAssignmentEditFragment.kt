@@ -10,21 +10,21 @@ import com.toughra.ustadmobile.R
 import com.toughra.ustadmobile.databinding.FragmentClazzAssignmentEditBinding
 import com.ustadmobile.core.controller.ClazzAssignmentEditPresenter
 import com.ustadmobile.core.controller.UstadEditPresenter
+import com.ustadmobile.core.util.IdOption
 import com.ustadmobile.core.util.ext.toStringMap
 import com.ustadmobile.core.view.ClazzAssignmentEditView
-import com.ustadmobile.lib.db.entities.ClazzAssignmentWithCourseBlock
+import com.ustadmobile.lib.db.entities.CourseBlockWithEntity
 import com.ustadmobile.lib.db.entities.CourseGroupSet
 import com.ustadmobile.port.android.view.binding.isSet
-import com.ustadmobile.port.android.view.util.ClearErrorTextWatcher
 
 
-class ClazzAssignmentEditFragment: UstadEditFragment<ClazzAssignmentWithCourseBlock>(), ClazzAssignmentEditView {
+class ClazzAssignmentEditFragment: UstadEditFragment<CourseBlockWithEntity>(), ClazzAssignmentEditView {
 
     private var mBinding: FragmentClazzAssignmentEditBinding? = null
 
     private var mPresenter: ClazzAssignmentEditPresenter? = null
 
-    override val mEditPresenter: UstadEditPresenter<*, ClazzAssignmentWithCourseBlock>?
+    override val mEditPresenter: UstadEditPresenter<*, CourseBlockWithEntity>?
         get() = mPresenter
 
 
@@ -34,7 +34,7 @@ class ClazzAssignmentEditFragment: UstadEditFragment<ClazzAssignmentWithCourseBl
         gracePeriodDate = Long.MAX_VALUE
         deadlineTime = 0
         gracePeriodTime = 0
-        entityVal?.block?.cbLateSubmissionPenalty = 0
+        entityVal?.cbLateSubmissionPenalty = 0
         entity = entityVal
     }
 
@@ -46,8 +46,9 @@ class ClazzAssignmentEditFragment: UstadEditFragment<ClazzAssignmentWithCourseBl
             rootView = it.root
             it.fileRequiredListener = onFileRequiredChanged
             it.textRequiredListener = onTextRequiredChanged
-            it.caDeadlineDateTextinput.setEndIconOnClickListener(clearDeadlineListener)
-            it.caDeadlineDate.doAfterTextChanged{ editable ->
+            it.groupSetEnabled = true
+            it.caEditCommonFields.caDeadlineDateTextinput.setEndIconOnClickListener(clearDeadlineListener)
+            it.caEditCommonFields.caDeadlineDate.doAfterTextChanged{ editable ->
                 if(editable.isNullOrEmpty()){
                     return@doAfterTextChanged
                 }
@@ -61,22 +62,6 @@ class ClazzAssignmentEditFragment: UstadEditFragment<ClazzAssignmentWithCourseBl
                 currentDeadlineDate = it.toString()
             }
         }
-
-        mBinding?.caTitleText?.addTextChangedListener(ClearErrorTextWatcher {
-            mBinding?.caTitleError = null
-        })
-
-        mBinding?.caStartDate?.addTextChangedListener(ClearErrorTextWatcher {
-            mBinding?.caStartDateError = null
-        })
-
-        mBinding?.caDeadlineDate?.addTextChangedListener(ClearErrorTextWatcher {
-            mBinding?.caDeadlineError = null
-        })
-
-        mBinding?.caGraceDate?.addTextChangedListener(ClearErrorTextWatcher {
-            mBinding?.caGracePeriodError = null
-        })
 
         return rootView
     }
@@ -100,17 +85,20 @@ class ClazzAssignmentEditFragment: UstadEditFragment<ClazzAssignmentWithCourseBl
         entity = null
     }
 
-    override var entity: ClazzAssignmentWithCourseBlock? = null
+    override var entity: CourseBlockWithEntity? = null
         get() = field
         set(value) {
             field = value
-            mBinding?.clazzAssignment = value
+            mBinding?.blockWithAssignment = value
             mBinding?.gracePeriodVisibility = if(deadlineDate.isSet){
                 View.VISIBLE
             }else{
                 View.GONE
             }
-            mBinding?.fileSubmissionVisibility = if(value?.caRequireFileSubmission == true)
+            mBinding?.fileSubmissionVisibility = if(value?.assignment?.caRequireFileSubmission == true)
+                View.VISIBLE else View.GONE
+
+            mBinding?.textSubmissionVisibility = if(value?.assignment?.caRequireTextSubmission == true)
                 View.VISIBLE else View.GONE
         }
 
@@ -202,12 +190,13 @@ class ClazzAssignmentEditFragment: UstadEditFragment<ClazzAssignmentWithCourseBl
             mBinding?.groupSet = value
         }
 
-    override var editAfterSubmissionOptions: List<ClazzAssignmentEditPresenter.EditAfterSubmissionOptionsMessageIdOption>? = null
+    override var submissionPolicyOptions: List<ClazzAssignmentEditPresenter.SubmissionPolicyOptionsMessageIdOption>? = null
         get() = field
         set(value) {
             field = value
-            mBinding?.editAfterSubmissionOptions = value
+            mBinding?.submissionPolicy = value
         }
+
     override var fileTypeOptions: List<ClazzAssignmentEditPresenter.FileTypeOptionsMessageIdOption>? = null
         get() = field
         set(value) {
@@ -229,13 +218,22 @@ class ClazzAssignmentEditFragment: UstadEditFragment<ClazzAssignmentWithCourseBl
             mBinding?.completionCriteriaOptions = value
         }
 
-    override var markingTypeOptions: List<ClazzAssignmentEditPresenter.MarkingTypeOptionsMessageIdOption>? = null
+    override var markingTypeOptions: List<IdOption>? = null
         get() = field
         set(value) {
             field = value
             mBinding?.markingTypeOptions = value
         }
 
+    override var groupSetEnabled: Boolean = true
+        get() = field
+        set(value) {
+            if(field == value){
+                return
+            }
+            field = value
+            mBinding?.groupSetEnabled = value
+        }
 
     private val onFileRequiredChanged: CompoundButton.OnCheckedChangeListener = CompoundButton.OnCheckedChangeListener { buttonView, isChecked ->
         mBinding?.fileSubmissionVisibility = if(isChecked) View.VISIBLE else View.GONE

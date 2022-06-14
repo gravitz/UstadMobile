@@ -6,7 +6,6 @@ import androidx.room.Query
 import androidx.room.Update
 import com.ustadmobile.door.DoorDataSourceFactory
 import com.ustadmobile.door.DoorLiveData
-import com.ustadmobile.door.SyncNode
 import com.ustadmobile.door.annotation.*
 import com.ustadmobile.door.util.systemTimeInMillis
 import com.ustadmobile.lib.db.entities.*
@@ -116,7 +115,6 @@ abstract class ClazzEnrolmentDao : BaseDao<ClazzEnrolment> {
     @Query("""
         UPDATE ClazzEnrolment 
           SET clazzEnrolmentDateLeft = :endDate,
-              clazzEnrolmentLastChangedBy = ${SyncNode.SELECT_LOCAL_NODE_ID_SQL},
               clazzEnrolmentLct = :updateTime
         WHERE clazzEnrolmentUid = :clazzEnrolmentUid""")
     abstract suspend fun updateDateLeftByUid(clazzEnrolmentUid: Long, endDate: Long, updateTime: Long)
@@ -206,7 +204,6 @@ abstract class ClazzEnrolmentDao : BaseDao<ClazzEnrolment> {
     @Query("""
                 UPDATE ClazzEnrolment
                    SET clazzEnrolmentActive = :active,
-                       clazzEnrolmentLastChangedBy = ${SyncNode.SELECT_LOCAL_NODE_ID_SQL},
                        clazzEnrolmentLct= :changeTime
                 WHERE clazzEnrolmentPersonUid = :personUid 
                       AND clazzEnrolmentClazzUid = :clazzUid
@@ -251,16 +248,20 @@ abstract class ClazzEnrolmentDao : BaseDao<ClazzEnrolment> {
         FROM PersonGroupMember
         ${Person.JOIN_FROM_PERSONGROUPMEMBER_TO_PERSON_VIA_SCOPEDGRANT_PT1} ${Role.PERMISSION_PERSON_SELECT} ${Person.JOIN_FROM_PERSONGROUPMEMBER_TO_PERSON_VIA_SCOPEDGRANT_PT2} 
         
-         WHERE
-         PersonGroupMember.groupMemberPersonUid = :accountPersonUid
-         AND PersonGroupMember.groupMemberActive 
-        AND Person.personUid IN (SELECT clazzEnrolmentPersonUid FROM ClazzEnrolment 
-        WHERE ClazzEnrolment.clazzEnrolmentClazzUid = :clazzUid AND ClazzEnrolment.clazzEnrolmentActive 
-        AND ClazzEnrolment.clazzEnrolmentRole = :roleId AND (:filter != $FILTER_ACTIVE_ONLY 
-        OR (:currentTime BETWEEN ClazzEnrolment.clazzEnrolmentDateJoined AND ClazzEnrolment.clazzEnrolmentDateLeft))) 
-        AND Person.firstNames || ' ' || Person.lastName LIKE :searchText
-        GROUP BY Person.personUid
-        ORDER BY CASE(:sortOrder)
+         WHERE PersonGroupMember.groupMemberPersonUid = :accountPersonUid
+           AND PersonGroupMember.groupMemberActive 
+           AND Person.personUid IN (SELECT clazzEnrolmentPersonUid 
+                                      FROM ClazzEnrolment 
+                                     WHERE ClazzEnrolment.clazzEnrolmentClazzUid = :clazzUid 
+                                       AND ClazzEnrolment.clazzEnrolmentActive 
+                                       AND ClazzEnrolment.clazzEnrolmentRole = :roleId 
+                                       AND (:filter != $FILTER_ACTIVE_ONLY 
+                                        OR (:currentTime 
+                                            BETWEEN ClazzEnrolment.clazzEnrolmentDateJoined 
+                                            AND ClazzEnrolment.clazzEnrolmentDateLeft))) 
+          AND Person.firstNames || ' ' || Person.lastName LIKE :searchText
+     GROUP BY Person.personUid
+     ORDER BY CASE(:sortOrder)
                 WHEN $SORT_FIRST_NAME_ASC THEN Person.firstNames
                 WHEN $SORT_LAST_NAME_ASC THEN Person.lastName
                 ELSE ''
@@ -302,9 +303,7 @@ abstract class ClazzEnrolmentDao : BaseDao<ClazzEnrolment> {
     @Query("""
             UPDATE ClazzEnrolment 
                SET clazzEnrolmentRole = :newRole,
-                   clazzEnrolmentLastChangedBy = ${SyncNode.SELECT_LOCAL_NODE_ID_SQL},
                    clazzEnrolmentLct = :updateTime      
-                   
              -- Avoid potential for duplicate approvals if user was previously refused      
              WHERE clazzEnrolmentUid = COALESCE( 
                     (SELECT clazzEnrolmentUid

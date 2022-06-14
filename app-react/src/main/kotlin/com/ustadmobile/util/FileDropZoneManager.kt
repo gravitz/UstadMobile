@@ -3,6 +3,7 @@ package com.ustadmobile.util
 import com.ustadmobile.core.util.UMFileUtil
 import com.ustadmobile.util.Util.stopEventPropagation
 import kotlinx.browser.document
+import kotlinx.browser.window
 import org.w3c.dom.Element
 import org.w3c.dom.events.Event
 import org.w3c.files.File
@@ -19,7 +20,8 @@ interface OnFileAttached {
  */
 class FileDropZoneManager(
     dropZoneId: String = "um-dropzone",
-    val acceptedMimeTypesAndExtensions: List<String>) {
+    val acceptedMimeTypesAndExtensions: List<String>
+) {
 
     private val mimeTypeMatcher = MimeTypeMatcher(acceptedMimeTypesAndExtensions)
 
@@ -51,9 +53,11 @@ class FileDropZoneManager(
     }
 
     private var onFileBrowseHandler :(Event) -> Unit = {
-        stopEventPropagation(it)
         dropZoneElement?.classList?.add("${StyleManager.name}-dropZoneAreaActive")
         dropZoneInput?.asDynamic().click()
+        window.setTimeout({
+            stopEventPropagation(it)
+        }, 2000)
     }
 
     var onFileAttached: OnFileAttached? = null

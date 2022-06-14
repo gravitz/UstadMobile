@@ -6,11 +6,15 @@ import com.ustadmobile.core.impl.NavigateForResultOptions
 import com.ustadmobile.core.util.SortOrderOption
 import com.ustadmobile.core.util.ext.toQueryLikeParam
 import com.ustadmobile.core.util.safeStringify
-import com.ustadmobile.core.view.*
+import com.ustadmobile.core.view.LanguageEditView
+import com.ustadmobile.core.view.LanguageListView
+import com.ustadmobile.core.view.ListViewMode
+import com.ustadmobile.core.view.SelectionOption
 import com.ustadmobile.door.DoorLifecycleOwner
 import com.ustadmobile.door.doorMainDispatcher
 import com.ustadmobile.lib.db.entities.Language
 import com.ustadmobile.lib.db.entities.UmAccount
+import com.ustadmobile.lib.util.getSystemTimeInMillis
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 import kotlinx.serialization.builtins.ListSerializer
@@ -60,15 +64,18 @@ class LanguageListPresenter(context: Any, arguments: Map<String, String>, view: 
         when(mListMode) {
             ListViewMode.PICKER -> finishWithResult(safeStringify(di,
                 ListSerializer(Language.serializer()), listOf(entry)))
-            ListViewMode.BROWSER -> systemImpl.go(LanguageEditView.VIEW_NAME,
-                    mapOf(UstadView.ARG_ENTITY_UID to entry.langUid.toString()), context)
+            ListViewMode.BROWSER -> navigateToEditScreen(entry)
         }
     }
 
     override fun handleClickCreateNewFab() {
+        navigateToEditScreen()
+    }
+
+    private fun navigateToEditScreen(language: Language? = null){
         navigateForResult(
             NavigateForResultOptions(this,
-                null,
+                language,
                 LanguageEditView.VIEW_NAME, Language::class,
                 Language.serializer(),
                 SAVEDSTATE_KEY_LANGUAGE
@@ -89,12 +96,12 @@ class LanguageListPresenter(context: Any, arguments: Map<String, String>, view: 
             when (option) {
                 SelectionOption.HIDE -> {
                     repo.languageDao.toggleVisibilityLanguage(true,
-                            selectedItem.map { it.langUid })
+                            selectedItem.map { it.langUid }, getSystemTimeInMillis())
                     view.showSnackBar(systemImpl.getString(MessageID.action_hidden, context), {
 
                         GlobalScope.launch(doorMainDispatcher()){
                             repo.languageDao.toggleVisibilityLanguage(false,
-                                    selectedItem.map { it.langUid })
+                                    selectedItem.map { it.langUid }, getSystemTimeInMillis())
                         }
 
                     }, MessageID.undo)

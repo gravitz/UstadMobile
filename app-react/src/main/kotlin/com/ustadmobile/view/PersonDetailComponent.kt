@@ -8,8 +8,11 @@ import com.ustadmobile.core.util.ext.outcomeToString
 import com.ustadmobile.core.util.ext.roleToString
 import com.ustadmobile.core.view.PersonDetailView
 import com.ustadmobile.door.DoorDataSourceFactory
+import com.ustadmobile.door.DoorMediatorLiveData
+import com.ustadmobile.door.DoorObserver
 import com.ustadmobile.door.ObserverFnWrapper
 import com.ustadmobile.lib.db.entities.ClazzEnrolmentWithClazzAndAttendance
+import com.ustadmobile.lib.db.entities.PersonPicture
 import com.ustadmobile.lib.db.entities.PersonWithPersonParentJoin
 import com.ustadmobile.mui.components.*
 import com.ustadmobile.util.StyleManager.alignTextToStart
@@ -20,6 +23,7 @@ import com.ustadmobile.util.StyleManager.defaultPaddingTop
 import com.ustadmobile.util.UmProps
 import com.ustadmobile.util.ext.standardFormat
 import com.ustadmobile.util.ext.toDate
+import com.ustadmobile.view.components.AttachmentImageLookupAdapter
 import com.ustadmobile.view.ext.*
 import kotlinx.css.LinearDimension
 import kotlinx.css.marginTop
@@ -29,7 +33,6 @@ import react.RBuilder
 import react.setState
 import styled.css
 import styled.styledDiv
-import kotlin.js.Date
 
 class PersonDetailComponent(mProps: UmProps): UstadDetailComponent<PersonWithPersonParentJoin>(mProps),
     PersonDetailView {
@@ -38,9 +41,6 @@ class PersonDetailComponent(mProps: UmProps): UstadDetailComponent<PersonWithPer
 
     override val detailPresenter: UstadDetailPresenter<*, *>?
         get() = mPresenter
-
-    override val viewNames: List<String>
-        get() = listOf(PersonDetailView.VIEW_NAME)
 
     private var classList: List<ClazzEnrolmentWithClazzAndAttendance>? = null
 
@@ -60,6 +60,14 @@ class PersonDetailComponent(mProps: UmProps): UstadDetailComponent<PersonWithPer
         }
 
     override var changePasswordVisible: Boolean = false
+        get() = field
+        set(value) {
+            setState {
+                field = value
+            }
+        }
+
+    override var chatVisibility: Boolean = false
         get() = field
         set(value) {
             setState {
@@ -103,9 +111,9 @@ class PersonDetailComponent(mProps: UmProps): UstadDetailComponent<PersonWithPer
                             entity?.phoneNum != null){
 
                         }
-                        renderTopMainAction("message",getString(MessageID.text), GridSize.cells4, GridSize.cells2,
+                        renderTopMainAction("message",getString(MessageID.chat), GridSize.cells4, GridSize.cells2,
                             entity?.phoneNum != null){
-
+                            mPresenter?.handleClickChat()
                         }
                         renderTopMainAction("email",getString(MessageID.email), GridSize.cells4, GridSize.cells2,
                             entity?.emailAddr != null){
@@ -138,7 +146,13 @@ class PersonDetailComponent(mProps: UmProps): UstadDetailComponent<PersonWithPer
                             css{
                                 marginTop = LinearDimension("12px")
                             }
-                            umEntityAvatar(showIcon = false) {}
+
+                            withAttachmentLocalUrlLookup(entity?.personUid ?: 0,
+                                PERSON_PICTURE_LOOKUP_ADAPTER
+                            ) { pictureLocalUrl ->
+                                umEntityAvatar(src = pictureLocalUrl, showIcon = false) {}
+                            }
+
                         }
 
                         umItem(GridSize.cells12, GridSize.cells8) {
@@ -230,8 +244,8 @@ class PersonDetailComponent(mProps: UmProps): UstadDetailComponent<PersonWithPer
                 val title = "${item.clazz?.clazzName} (${item.roleToString(this, systemImpl)}) " +
                         "- ${item.outcomeToString(this,  systemImpl)}"
 
-                val enrollmentPeriod = "${Date(item.clazzEnrolmentDateJoined).standardFormat()} " +
-                        "- ${Date(item.clazzEnrolmentDateLeft).standardFormat()}"
+                val enrollmentPeriod = "${item.clazzEnrolmentDateJoined.toDate()?.standardFormat()} " +
+                        "- ${item.clazzEnrolmentDateLeft.toDate(true)?.standardFormat() ?: getString(MessageID.present)}"
 
 
                 renderListItemWithAttendance("people", title, enrollmentPeriod,
@@ -239,4 +253,20 @@ class PersonDetailComponent(mProps: UmProps): UstadDetailComponent<PersonWithPer
             }
         }
     }
+
+    companion object {
+
+        val PERSON_PICTURE_LOOKUP_ADAPTER = AttachmentImageLookupAdapter { db, entityUid ->
+            object: DoorMediatorLiveData<String?>(), DoorObserver<PersonPicture?> {
+                init {
+                    addSource(db.personPictureDao.findByPersonUidLive(entityUid), this)
+                }
+                override fun onChanged(t: PersonPicture?) {
+                    postValue(t?.personPictureUri)
+                }
+            }
+        }
+
+    }
+
 }

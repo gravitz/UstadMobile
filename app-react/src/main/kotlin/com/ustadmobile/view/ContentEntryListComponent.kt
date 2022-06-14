@@ -16,6 +16,7 @@ import com.ustadmobile.mui.components.umMenu
 import com.ustadmobile.mui.components.umMenuItem
 import com.ustadmobile.util.StyleManager.displayProperty
 import com.ustadmobile.util.UmProps
+import com.ustadmobile.view.ext.renderAddContentEntryOptionsDialog
 import com.ustadmobile.view.ext.renderContentEntryListItem
 import com.ustadmobile.view.ext.umItem
 import kotlinx.browser.document
@@ -42,10 +43,6 @@ class ContentEntryListComponent(props: UmProps): UstadListComponent<ContentEntry
 
     override val displayTypeRepo: Any?
         get() = dbRepo?.contentEntryDao
-
-    override val viewNames: List<String>
-        get() = listOf(ContentEntryList2View.VIEW_NAME_HOME, ContentEntryList2View.VIEW_NAME,
-            ContentEntryList2View.FOLDER_VIEW_NAME)
 
     override var editOptionVisible: Boolean = false
         get() = field
@@ -95,32 +92,16 @@ class ContentEntryListComponent(props: UmProps): UstadListComponent<ContentEntry
     }
 
     override fun RBuilder.renderAddContentOptionsDialog() {
-
         if(showAddEntryOptions){
-            val options = mutableListOf(
-                UmDialogOptionItem("create_new_folder",
-                    MessageID.content_editor_create_new_category) {
-                    mPresenter?.onClickNewFolder()
-                },
-                UmDialogOptionItem("link",MessageID.add_using_link,
-                    MessageID.add_link_description) {
-                    mPresenter?.onClickImportLink()
-                },
-                UmDialogOptionItem("collections",MessageID.add_from_gallery,
-                    MessageID.add_gallery_description) {
-                    mPresenter?.onClickImportGallery()
-                },
-                UmDialogOptionItem("note_add",MessageID.add_file,
-                    MessageID.add_file_description) {
-                    mPresenter?.onClickImportFile()
-                }
-            )
-
-            renderDialogOptions(systemImpl,options, Date().getTime().toLong()){
-                setState {
-                    showAddEntryOptions = false
-                }
-            }
+            renderAddContentEntryOptionsDialog(systemImpl,
+                onClickNewFolder = { mPresenter?.onClickNewFolder() },
+                onClickAddFromLink = { mPresenter?.onClickImportLink() },
+                onClickAddFile = { mPresenter?.onClickImportFile() },
+                onDismiss = {
+                    setState {
+                        showAddEntryOptions = false
+                    }
+                })
         }
     }
 
@@ -150,7 +131,7 @@ class ContentEntryListComponent(props: UmProps): UstadListComponent<ContentEntry
                 anchorElement = anchorElement,
                 onClose = {
                     setState {
-                        showingEditOptions = false;
+                        showingEditOptions = false
                         anchorElement = null
                     }
                 }) {

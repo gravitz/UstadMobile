@@ -7,9 +7,7 @@ import com.ustadmobile.door.DoorDataSourceFactory
 import com.ustadmobile.door.DoorLiveData
 import com.ustadmobile.door.SyncNode
 import com.ustadmobile.door.annotation.*
-import com.ustadmobile.lib.db.entities.Chat
-import com.ustadmobile.lib.db.entities.ChatWithLatestMessageAndCount
-import com.ustadmobile.lib.db.entities.UserSession
+import com.ustadmobile.lib.db.entities.*
 
 @Dao
 @Repository
@@ -92,7 +90,20 @@ abstract class ChatDao: BaseDao<Chat>{
                op.personUid AS otherPersonUid,
                op.firstNames AS otherPersonFirstNames,
                op.lastName AS otherPersonLastName,
-               (0) AS unreadMessageCount,
+               (
+				SELECT COUNT(*) 
+				  FROM Message 
+				 WHERE Message.messageTableId = ${Chat.TABLE_ID} 
+				   AND Message.messageEntityUid = Chat.chatUid 
+				   AND Message.messageSenderPersonUid != :personUid
+				   AND Message.messageTimestamp > coalesce((
+						SELECT MessageRead.messageReadLct FROM MessageRead 
+						WHERE MessageRead.messageReadPersonUid = :personUid
+						AND MessageRead.messageReadMessageUid = Message.messageUid 
+				      ), 0)
+					
+				
+			   ) AS unreadMessageCount,
         
                (SELECT COUNT(*)
                   FROM ChatMember mm
@@ -121,6 +132,7 @@ abstract class ChatDao: BaseDao<Chat>{
          WHERE ChatMember.chatMemberPersonUid = :personUid
            AND ChatMember.chatMemberLeftDate = ${Long.MAX_VALUE}
            AND Chat.chatUid != 0 
+           AND op.firstNames||' '||op.lastName LIKE :searchBit 
         -- When in search mode we need to add all Persons who match the search to the list, even if
         -- no chat has started
         UNION
@@ -132,16 +144,39 @@ abstract class ChatDao: BaseDao<Chat>{
                     Person.lastName AS otherPersonLastName,
                     0 AS unreadMessageCount,
                     0 AS numMembers
-          FROM Person
+                              
+          FROM PersonGroupMember
+             ${Person.JOIN_FROM_PERSONGROUPMEMBER_TO_PERSON_VIA_SCOPEDGRANT_PT1}
+                    ${Role.PERMISSION_PERSON_SELECT}
+                    ${Person.JOIN_FROM_PERSONGROUPMEMBER_TO_PERSON_VIA_SCOPEDGRANT_PT2}
+		  
                LEFT JOIN Chat
                     ON Chat.chatUid = 0
          WHERE :searchBit != '%'
+           AND PersonGroupMember.groupMemberPersonUid = :personUid
            AND Person.personUid != :personUid
+        
            AND Person.personUid NOT IN
-               (SELECT p.personUid
-                  FROM ChatMember c
-                       LEFT JOIN Person p 
-                            ON p.personUid = c.chatMemberPersonUid)
+			   (
+				SELECT chatpeople.personUid 
+				  FROM ChatMember cmm
+					   LEFT JOIN Chat cc 
+							  ON cc.chatUid = cmm.chatMemberChatUid 
+			   
+				 LEFT JOIN Person chatpeople 
+                    ON chatpeople.personUid =
+                       (SELECT chatpeopleother.personUid
+                          FROM ChatMember cm
+                               LEFT JOIN Person chatpeopleother 
+                                    ON chatpeopleother.personUid = cm.chatMemberPersonUid
+                         WHERE cm.chatMemberChatUid = cc.chatUid
+                           AND cm.chatMemberPersonUid != :personUid
+                         LIMIT 1)
+						 
+				 WHERE cc.chatUid != 0 
+				   AND cmm.chatMemberPersonUid = :personUid
+				 )
+                            
            AND Person.firstNames||' '||Person.lastName LIKE :searchBit 
          ORDER BY latestMessageTimestamp DESC
     """)
@@ -151,12 +186,12 @@ abstract class ChatDao: BaseDao<Chat>{
 
     @Query("""
         SELECT CASE
-                   WHEN Chat.isChatGroup THEN Chat.chatTitle
+                   WHEN Chat.chatGroup THEN Chat.chatTitle
                    ELSE Person.firstNames||' '||Person.lastName
                END AS title
         FROM Chat
         LEFT JOIN Person 
-        ON CAST(Chat.isChatGroup AS INTEGER) = 0
+        ON CAST(Chat.chatGroup AS INTEGER) = 0
            AND Person.personUid =
           (SELECT pp.personUid
            FROM ChatMember cm
@@ -170,5 +205,22 @@ abstract class ChatDao: BaseDao<Chat>{
     abstract suspend fun getTitleChat(chatUid: Long, personUid: Long): String?
 
 
+
+    @Query("""
+        SELECT Chat.*
+          FROM ChatMember
+          LEFT JOIN Chat ON Chat.chatUid = ChatMember.chatMemberChatUid
+         WHERE ChatMember.chatMemberPersonUid = :otherPersonUid
+           AND CAST(Chat.chatGroup AS INTEGER) = 0
+           AND Chat.chatUid IN 
+               (
+                SELECT ChatMember.chatMemberChatUid
+                  FROM ChatMember
+                 WHERE ChatMember.chatMemberChatUid = Chat.chatUid
+                   AND ChatMember.chatMemberPersonUid = :loggedInPersonUid 
+               ) 
+           AND :otherPersonUid != :loggedInPersonUid
+    """)
+    abstract suspend fun getChatByOtherPerson(otherPersonUid: Long, loggedInPersonUid: Long): Chat?
 
 }

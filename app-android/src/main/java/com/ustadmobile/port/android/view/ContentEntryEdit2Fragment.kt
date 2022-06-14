@@ -1,5 +1,6 @@
 package com.ustadmobile.port.android.view
 
+import android.annotation.SuppressLint
 import android.net.Uri
 import android.os.Bundle
 import android.util.TypedValue
@@ -9,18 +10,17 @@ import android.view.ViewGroup
 import android.webkit.WebChromeClient
 import android.webkit.WebView
 import android.widget.AdapterView
+import androidx.core.widget.doAfterTextChanged
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.navigation.fragment.findNavController
 import com.google.android.exoplayer2.SimpleExoPlayer
-import com.google.android.exoplayer2.source.ProgressiveMediaSource
 import com.google.android.exoplayer2.ui.PlayerView
 import com.google.android.exoplayer2.upstream.DataSource
 import com.google.android.exoplayer2.upstream.DefaultDataSourceFactory
 import com.google.android.exoplayer2.util.Util
 import com.toughra.ustadmobile.R
 import com.toughra.ustadmobile.databinding.FragmentContentEntryEdit2Binding
-import com.ustadmobile.core.contentformats.metadata.ImportedContentEntryMetaData
 import com.ustadmobile.core.contentjob.MetadataResult
 import com.ustadmobile.core.controller.ContentEntryEdit2Presenter
 import com.ustadmobile.core.controller.UstadEditPresenter
@@ -31,10 +31,13 @@ import com.ustadmobile.core.util.ext.toBundle
 import com.ustadmobile.core.util.ext.toStringMap
 import com.ustadmobile.core.view.ContentEntryEdit2View
 import com.ustadmobile.lib.db.entities.ContentEntry
-import com.ustadmobile.lib.db.entities.ContentEntryWithLanguage
+import com.ustadmobile.lib.db.entities.ContentEntryPicture
+import com.ustadmobile.lib.db.entities.ContentEntryWithBlockAndLanguage
 import com.ustadmobile.lib.db.entities.Language
 import com.ustadmobile.port.android.util.ext.currentBackStackEntrySavedStateMap
 import com.ustadmobile.port.android.view.ContentEntryAddOptionsBottomSheetFragment.Companion.ARG_SHOW_ADD_FOLDER
+import com.ustadmobile.port.android.view.binding.ImageViewLifecycleObserver2
+import com.ustadmobile.port.android.view.binding.isSet
 
 
 interface ContentEntryEdit2FragmentEventHandler {
@@ -46,7 +49,7 @@ interface ContentEntryEdit2FragmentEventHandler {
 }
 
 class ContentEntryEdit2Fragment(
-) : UstadEditFragment<ContentEntryWithLanguage>(), ContentEntryEdit2View,
+) : UstadEditFragment<ContentEntryWithBlockAndLanguage>(), ContentEntryEdit2View,
     ContentEntryEdit2FragmentEventHandler,
     DropDownListAutoCompleteTextView.OnDropDownListItemSelectedListener<IdOption>
 {
@@ -55,7 +58,7 @@ class ContentEntryEdit2Fragment(
 
     private var mPresenter: ContentEntryEdit2Presenter? = null
 
-    override val mEditPresenter: UstadEditPresenter<*, ContentEntryWithLanguage>?
+    override val mEditPresenter: UstadEditPresenter<*, ContentEntryWithBlockAndLanguage>?
         get() = mPresenter
 
     private var playerView: PlayerView? = null
@@ -70,23 +73,21 @@ class ContentEntryEdit2Fragment(
 
     private var webView: WebView?  = null
 
-    override var entity: ContentEntryWithLanguage? = null
+    override var entity: ContentEntryWithBlockAndLanguage? = null
         get() = field
         set(value) {
             field = value
             mBinding?.contentEntry = value
-            mBinding?.minScoreVisible = value?.completionCriteria == ContentEntry.COMPLETION_CRITERIA_MIN_SCORE
-        }
-
-    override var entryMetaData: ImportedContentEntryMetaData? = null
-        get() = field
-        set(value) {
-            field = value
+            mBinding?.minScoreVisible = value?.block?.cbCompletionCriteria == ContentEntry.COMPLETION_CRITERIA_MIN_SCORE
+            mBinding?.gracePeriodVisibility = if(deadlineDate.isSet){
+                View.VISIBLE
+            }else{
+                View.GONE
+            }
         }
 
     override var metadataResult: MetadataResult? = null
         set(value) {
-            // TODO need to remove fileSelectedInfo if metadata came from scraper
             mBinding?.metadataResult = value
             field = value
         }
@@ -104,12 +105,14 @@ class ContentEntryEdit2Fragment(
             mBinding?.licenceOptions = value
         }
 
-    override var showCompletionCriteria: Boolean = false
-        get() = field
+    override var contentEntryPicture: ContentEntryPicture?
+        get() = mBinding?.contentEntryPicture
         set(value) {
-            field = value
-            mBinding?.showCompletionCriteria = value
+            mBinding?.contentEntryPicture = value
         }
+
+
+    private var imageViewLifecycleObserver: ImageViewLifecycleObserver2? = null
 
     override var completionCriteriaOptions: List<ContentEntryEdit2Presenter.CompletionCriteriaMessageIdOption>? = null
         set(value) {
@@ -153,9 +156,9 @@ class ContentEntryEdit2Fragment(
     private fun prepareVideoFromFile(filePath: String) {
         val uri = Uri.parse(filePath)
         val dataSourceFactory: DataSource.Factory = DefaultDataSourceFactory(requireContext(), "UstadMobile")
-        val mediaSource = ProgressiveMediaSource.Factory(dataSourceFactory)
-                .createMediaSource(uri)
-        player?.prepare(mediaSource)
+//        val mediaSource = ProgressiveMediaSource.Factory(dataSourceFactory)
+//                .createMediaSource(uri)
+//        player?.prepare(mediaSource)
     }
 
     private fun prepareVideoFromWeb(filePath: String){
@@ -209,6 +212,75 @@ class ContentEntryEdit2Fragment(
         set(value) {
             mBinding?.showUpdateContentButton = value
         }
+    override var caGracePeriodError: String? = null
+        get() = field
+        set(value) {
+            field = value
+            mBinding?.caGracePeriodError = value
+        }
+    override var caDeadlineError: String? = null
+        get() = field
+        set(value) {
+            field = value
+            mBinding?.caDeadlineError = value
+        }
+
+
+    override var caStartDateError: String? = null
+        get() = field
+        set(value) {
+            field = value
+            mBinding?.caStartDateError = value
+        }
+
+    override var caMaxPointsError: String? = null
+        get() = field
+        set(value) {
+            field = value
+            mBinding?.caMaxPointsError = value
+        }
+
+    override var startDate: Long
+        get() = mBinding?.startDate ?: 0
+        set(value) {
+            mBinding?.startDate = value
+        }
+
+    override var startTime: Long
+        get() = mBinding?.startTime ?: 0
+        set(value) {
+            mBinding?.startTime = value
+        }
+
+    override var deadlineDate: Long
+        get() = mBinding?.deadlineDate ?: Long.MAX_VALUE
+        set(value) {
+            mBinding?.deadlineDate = value
+        }
+
+    override var deadlineTime: Long
+        get() = mBinding?.deadlineTime ?: 0
+        set(value) {
+            mBinding?.deadlineTime = value
+        }
+
+    override var gracePeriodDate: Long
+        get() = mBinding?.gracePeriodDate ?: Long.MAX_VALUE
+        set(value) {
+            mBinding?.gracePeriodDate = value
+        }
+
+    override var gracePeriodTime: Long
+        get() = mBinding?.gracePeriodTime ?: 0
+        set(value) {
+            mBinding?.gracePeriodTime = value
+        }
+
+    override var timeZone: String? = null
+        set(value) {
+            mBinding?.timeZone = value
+            field = value
+        }
 
     override fun onClickUpdateContent() {
         onSaveStateToBackStackStateHandle()
@@ -222,7 +294,20 @@ class ContentEntryEdit2Fragment(
         mPresenter?.handleClickLanguage()
     }
 
-    override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View? {
+    var currentDeadlineDate: String? = null
+
+    private var clearDeadlineListener: View.OnClickListener = View.OnClickListener {
+        val entityVal = entity
+        deadlineDate = Long.MAX_VALUE
+        gracePeriodDate = Long.MAX_VALUE
+        deadlineTime = 0
+        gracePeriodTime = 0
+        entityVal?.block?.cbLateSubmissionPenalty = 0
+        entity = entityVal
+    }
+
+    @SuppressLint("SetJavaScriptEnabled")
+    override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         val rootView: View
         mBinding = FragmentContentEntryEdit2Binding.inflate(inflater, container, false).also {
             rootView = it.root
@@ -242,12 +327,28 @@ class ContentEntryEdit2Fragment(
                 allowUniversalAccessFromFileURLs = true
                 mediaPlaybackRequiresUserGesture = true
             }
+
+            it.entryEditCommonFields.caDeadlineDateTextinput.setEndIconOnClickListener(clearDeadlineListener)
+            it.entryEditCommonFields.caDeadlineDate.doAfterTextChanged{ editable ->
+                if(editable.isNullOrEmpty()){
+                    return@doAfterTextChanged
+                }
+                if(editable.toString() == currentDeadlineDate){
+                    mBinding?.takeIf { bind -> bind.gracePeriodVisibility == View.GONE }.also {
+                        mBinding?.gracePeriodVisibility = View.VISIBLE
+                    }
+                    return@doAfterTextChanged
+                }
+                mBinding?.gracePeriodVisibility = View.VISIBLE
+                currentDeadlineDate = it.toString()
+            }
+
         }
 
         if (savedInstanceState != null) {
-            playbackPosition = savedInstanceState.get(PLAYBACK) as Long
-            playWhenReady = savedInstanceState.get(PLAY_WHEN_READY) as Boolean
-            currentWindow = savedInstanceState.get(CURRENT_WINDOW) as Int
+            playbackPosition = savedInstanceState.get(PLAYBACK) as? Long ?: 0L
+            playWhenReady = savedInstanceState.get(PLAY_WHEN_READY) as? Boolean ?: false
+            currentWindow = savedInstanceState.get(CURRENT_WINDOW) as? Int ?: 0
         }
 
         return rootView
@@ -256,6 +357,13 @@ class ContentEntryEdit2Fragment(
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         val navController = findNavController()
+
+        imageViewLifecycleObserver = ImageViewLifecycleObserver2(
+            requireActivity().activityResultRegistry,null, 1).also {
+            viewLifecycleOwner.lifecycle.addObserver(it)
+            mBinding?.imageViewLifecycleObserver = it
+        }
+
         ustadFragmentTitle = getString(R.string.content)
 
         mPresenter = ContentEntryEdit2Presenter(requireContext(), arguments.toStringMap(), this,

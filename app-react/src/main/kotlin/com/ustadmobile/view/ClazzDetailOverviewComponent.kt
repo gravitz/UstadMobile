@@ -6,12 +6,11 @@ import com.ustadmobile.core.generated.locale.MessageID
 import com.ustadmobile.core.view.ClazzDetailOverviewView
 import com.ustadmobile.core.view.EditButtonMode
 import com.ustadmobile.door.DoorDataSourceFactory
+import com.ustadmobile.door.DoorMediatorLiveData
+import com.ustadmobile.door.DoorObserver
 import com.ustadmobile.door.ObserverFnWrapper
 import com.ustadmobile.lib.db.entities.*
-import com.ustadmobile.mui.components.GridSize
-import com.ustadmobile.mui.components.GridSpacing
-import com.ustadmobile.mui.components.TypographyVariant
-import com.ustadmobile.mui.components.umTypography
+import com.ustadmobile.mui.components.*
 import com.ustadmobile.util.DraftJsUtil.clean
 import com.ustadmobile.util.StyleManager
 import com.ustadmobile.util.StyleManager.contentContainer
@@ -22,6 +21,7 @@ import com.ustadmobile.util.Util
 import com.ustadmobile.util.Util.ASSET_ENTRY
 import com.ustadmobile.util.ext.format
 import com.ustadmobile.util.ext.formatDateRange
+import com.ustadmobile.view.components.AttachmentImageLookupAdapter
 import com.ustadmobile.view.ext.*
 import org.w3c.dom.events.Event
 import react.RBuilder
@@ -36,9 +36,6 @@ class ClazzDetailOverviewComponent(mProps: UmProps): UstadDetailComponent<ClazzW
 
     override val detailPresenter: UstadDetailPresenter<*, *>?
         get() = mPresenter
-
-    override val viewNames: List<String>
-        get() = listOf(ClazzDetailOverviewView.VIEW_NAME)
 
     private var schedules: List<Schedule> = listOf()
 
@@ -82,6 +79,13 @@ class ClazzDetailOverviewComponent(mProps: UmProps): UstadDetailComponent<ClazzW
             }
         }
 
+    override var showPermissionButton: Boolean = false
+        set(value) {
+            setState {
+                field = value
+            }
+        }
+
     override var entity: ClazzWithDisplayDetails? = null
         get() = field
         set(value) {
@@ -107,7 +111,11 @@ class ClazzDetailOverviewComponent(mProps: UmProps): UstadDetailComponent<ClazzW
 
             umGridContainer(columnSpacing = GridSpacing.spacing6) {
                 umItem(GridSize.cells12, GridSize.cells4){
-                    umEntityAvatar(listItem = true, fallbackSrc = ASSET_ENTRY)
+                    withAttachmentLocalUrlLookup(entity?.clazzUid ?: 0,
+                        CLAZZ_PICTURE_LOOKUP_ADAPTER
+                    ) { attachmentSrc ->
+                        umEntityAvatar(listItem = true, fallbackSrc = ASSET_ENTRY, src = attachmentSrc)
+                    }
                 }
 
                 umItem(GridSize.cells12, GridSize.cells8){
@@ -160,6 +168,14 @@ class ClazzDetailOverviewComponent(mProps: UmProps): UstadDetailComponent<ClazzW
                                             mPresenter?.handleClickAssignment(it.assignment as ClazzAssignment)
                                         CourseBlock.BLOCK_CONTENT_TYPE ->
                                             mPresenter?.contentEntryListItemListener?.onClickContentEntry(it.entry!!)
+                                        CourseBlock.BLOCK_DISCUSSION_TYPE ->
+                                            it.courseDiscussion?.let { it1 ->
+                                                mPresenter?.handleClickCourseDiscussion(
+                                                    it1
+                                                )
+                                            }
+                                        CourseBlock.BLOCK_TEXT_TYPE ->
+                                            mPresenter?.handleClickTextBlock(it)
                                     }
                                 }
                             }
@@ -203,8 +219,23 @@ class ClazzDetailOverviewComponent(mProps: UmProps): UstadDetailComponent<ClazzW
 
                     CourseBlock.BLOCK_CONTENT_TYPE -> {
                         item.entry?.let {
-                            renderContentEntryListItem(it, systemImpl)
+                            renderContentEntryListItem(it,systemImpl, showStatus= true, block = item)
                         }
+                    }
+
+                    CourseBlock.BLOCK_DISCUSSION_TYPE -> {
+                        renderCourseBlockTextOrModuleListItem(
+                            item.cbType,
+                            item.cbIndentLevel,
+                            item.courseDiscussion?.courseDiscussionTitle?: "",
+                            showReorder = false,
+                            withAction = item.cbType == CourseBlock.BLOCK_DISCUSSION_TYPE,
+                            description = clean(item.courseDiscussion?.courseDiscussionDesc ?: ""),
+                            onActionClick = {
+                                Util.stopEventPropagation(it)
+                                onClick.invoke(it)
+                            }
+                        )
                     }
                 }
             }
@@ -227,5 +258,21 @@ class ClazzDetailOverviewComponent(mProps: UmProps): UstadDetailComponent<ClazzW
         mPresenter?.onDestroy()
         mPresenter = null
         entity = null
+    }
+
+    companion object {
+
+        val CLAZZ_PICTURE_LOOKUP_ADAPTER = AttachmentImageLookupAdapter { db, entityUid ->
+            object: DoorMediatorLiveData<String?>(), DoorObserver<CoursePicture?> {
+                init {
+                    addSource(db.coursePictureDao.findByClazzUidLive(entityUid), this)
+                }
+
+                override fun onChanged(t: CoursePicture?) {
+                    postValue(t?.coursePictureUri)
+                }
+            }
+        }
+
     }
 }

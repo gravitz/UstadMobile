@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "database": {
     "version": 103,
-    "identityHash": "43874108f125a10d725ac687447de8bd",
+    "identityHash": "5e9d04645b5feb24c488f344eb9e6a4c",
     "entities": [
       {
         "tableName": "NetworkNode",
@@ -1156,7 +1156,7 @@
       },
       {
         "tableName": "Clazz",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`clazzUid` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `clazzName` TEXT, `clazzDesc` TEXT, `attendanceAverage` REAL NOT NULL, `clazzHolidayUMCalendarUid` INTEGER NOT NULL, `clazzScheuleUMCalendarUid` INTEGER NOT NULL, `isClazzActive` INTEGER NOT NULL, `clazzLocationUid` INTEGER NOT NULL, `clazzStartTime` INTEGER NOT NULL, `clazzEndTime` INTEGER NOT NULL, `clazzFeatures` INTEGER NOT NULL, `clazzSchoolUid` INTEGER NOT NULL, `clazzEnrolmentPolicy` INTEGER NOT NULL DEFAULT 100, `clazzTerminologyUid` INTEGER NOT NULL DEFAULT 25966, `clazzMasterChangeSeqNum` INTEGER NOT NULL, `clazzLocalChangeSeqNum` INTEGER NOT NULL, `clazzLastChangedBy` INTEGER NOT NULL, `clazzLct` INTEGER NOT NULL, `clazzTimeZone` TEXT, `clazzStudentsPersonGroupUid` INTEGER NOT NULL, `clazzTeachersPersonGroupUid` INTEGER NOT NULL, `clazzPendingStudentsPersonGroupUid` INTEGER NOT NULL, `clazzParentsPersonGroupUid` INTEGER NOT NULL, `clazzCode` TEXT)",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`clazzUid` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `clazzName` TEXT, `clazzDesc` TEXT, `attendanceAverage` REAL NOT NULL, `clazzHolidayUMCalendarUid` INTEGER NOT NULL, `clazzScheuleUMCalendarUid` INTEGER NOT NULL, `isClazzActive` INTEGER NOT NULL, `clazzLocationUid` INTEGER NOT NULL, `clazzStartTime` INTEGER NOT NULL, `clazzEndTime` INTEGER NOT NULL, `clazzFeatures` INTEGER NOT NULL, `clazzSchoolUid` INTEGER NOT NULL, `clazzEnrolmentPolicy` INTEGER NOT NULL DEFAULT 102, `clazzTerminologyUid` INTEGER NOT NULL DEFAULT 25966, `clazzMasterChangeSeqNum` INTEGER NOT NULL, `clazzLocalChangeSeqNum` INTEGER NOT NULL, `clazzLastChangedBy` INTEGER NOT NULL, `clazzLct` INTEGER NOT NULL, `clazzTimeZone` TEXT, `clazzStudentsPersonGroupUid` INTEGER NOT NULL, `clazzTeachersPersonGroupUid` INTEGER NOT NULL, `clazzPendingStudentsPersonGroupUid` INTEGER NOT NULL, `clazzParentsPersonGroupUid` INTEGER NOT NULL, `clazzCode` TEXT)",
         "fields": [
           {
             "fieldPath": "clazzUid",
@@ -1235,7 +1235,7 @@
             "columnName": "clazzEnrolmentPolicy",
             "affinity": "INTEGER",
             "notNull": true,
-            "defaultValue": "100"
+            "defaultValue": "102"
           },
           {
             "fieldPath": "clazzTerminologyUid",
@@ -4156,7 +4156,7 @@
       },
       {
         "tableName": "Comments",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`commentsUid` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `commentsText` TEXT, `commentsEntityType` INTEGER NOT NULL, `commentsEntityUid` INTEGER NOT NULL, `commentsPublic` INTEGER NOT NULL, `commentsStatus` INTEGER NOT NULL, `commentsPersonUid` INTEGER NOT NULL, `commentsToPersonUid` INTEGER NOT NULL, `commentsFlagged` INTEGER NOT NULL, `commentsInActive` INTEGER NOT NULL, `commentsDateTimeAdded` INTEGER NOT NULL, `commentsDateTimeUpdated` INTEGER NOT NULL, `commentsMCSN` INTEGER NOT NULL, `commentsLCSN` INTEGER NOT NULL, `commentsLCB` INTEGER NOT NULL, `commentsLct` INTEGER NOT NULL)",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`commentsUid` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `commentsText` TEXT, `commentsEntityType` INTEGER NOT NULL, `commentsEntityUid` INTEGER NOT NULL, `commentsPublic` INTEGER NOT NULL, `commentsStatus` INTEGER NOT NULL, `commentsPersonUid` INTEGER NOT NULL, `commentsToPersonUid` INTEGER NOT NULL, `commentSubmitterUid` INTEGER NOT NULL, `commentsFlagged` INTEGER NOT NULL, `commentsInActive` INTEGER NOT NULL, `commentsDateTimeAdded` INTEGER NOT NULL, `commentsDateTimeUpdated` INTEGER NOT NULL, `commentsMCSN` INTEGER NOT NULL, `commentsLCSN` INTEGER NOT NULL, `commentsLCB` INTEGER NOT NULL, `commentsLct` INTEGER NOT NULL)",
         "fields": [
           {
             "fieldPath": "commentsUid",
@@ -4203,6 +4203,12 @@
           {
             "fieldPath": "commentsToPersonUid",
             "columnName": "commentsToPersonUid",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "commentSubmitterUid",
+            "columnName": "commentSubmitterUid",
             "affinity": "INTEGER",
             "notNull": true
           },
@@ -5229,7 +5235,7 @@
       },
       {
         "tableName": "ClazzAssignment",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`caUid` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `caTitle` TEXT, `caDescription` TEXT, `caGroupUid` INTEGER NOT NULL DEFAULT 0, `caActive` INTEGER NOT NULL, `caClassCommentEnabled` INTEGER NOT NULL, `caPrivateCommentsEnabled` INTEGER NOT NULL, `caCompletionCriteria` INTEGER NOT NULL DEFAULT 100, `caRequireFileSubmission` INTEGER NOT NULL DEFAULT 1, `caFileType` INTEGER NOT NULL DEFAULT 0, `caSizeLimit` INTEGER NOT NULL DEFAULT 50, `caNumberOfFiles` INTEGER NOT NULL DEFAULT 1, `caEditAfterSubmissionType` INTEGER NOT NULL DEFAULT 0, `caMarkingType` INTEGER NOT NULL DEFAULT 1, `caRequireTextSubmission` INTEGER NOT NULL DEFAULT 1, `caTextLimitType` INTEGER NOT NULL DEFAULT 1, `caTextLimit` INTEGER NOT NULL DEFAULT 500, `caXObjectUid` INTEGER NOT NULL DEFAULT 0, `caClazzUid` INTEGER NOT NULL, `caLocalChangeSeqNum` INTEGER NOT NULL, `caMasterChangeSeqNum` INTEGER NOT NULL, `caLastChangedBy` INTEGER NOT NULL, `caLct` INTEGER NOT NULL)",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`caUid` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `caTitle` TEXT, `caDescription` TEXT, `caGroupUid` INTEGER NOT NULL DEFAULT 0, `caActive` INTEGER NOT NULL, `caClassCommentEnabled` INTEGER NOT NULL, `caPrivateCommentsEnabled` INTEGER NOT NULL DEFAULT 1, `caCompletionCriteria` INTEGER NOT NULL DEFAULT 100, `caRequireFileSubmission` INTEGER NOT NULL DEFAULT 1, `caFileType` INTEGER NOT NULL DEFAULT 0, `caSizeLimit` INTEGER NOT NULL DEFAULT 50, `caNumberOfFiles` INTEGER NOT NULL DEFAULT 1, `caSubmissionPolicy` INTEGER NOT NULL DEFAULT 1, `caMarkingType` INTEGER NOT NULL DEFAULT 1, `caRequireTextSubmission` INTEGER NOT NULL DEFAULT 1, `caTextLimitType` INTEGER NOT NULL DEFAULT 1, `caTextLimit` INTEGER NOT NULL DEFAULT 500, `caXObjectUid` INTEGER NOT NULL DEFAULT 0, `caClazzUid` INTEGER NOT NULL, `caLocalChangeSeqNum` INTEGER NOT NULL, `caMasterChangeSeqNum` INTEGER NOT NULL, `caLastChangedBy` INTEGER NOT NULL, `caLct` INTEGER NOT NULL)",
         "fields": [
           {
             "fieldPath": "caUid",
@@ -5272,7 +5278,8 @@
             "fieldPath": "caPrivateCommentsEnabled",
             "columnName": "caPrivateCommentsEnabled",
             "affinity": "INTEGER",
-            "notNull": true
+            "notNull": true,
+            "defaultValue": "1"
           },
           {
             "fieldPath": "caCompletionCriteria",
@@ -5310,11 +5317,11 @@
             "defaultValue": "1"
           },
           {
-            "fieldPath": "caEditAfterSubmissionType",
-            "columnName": "caEditAfterSubmissionType",
+            "fieldPath": "caSubmissionPolicy",
+            "columnName": "caSubmissionPolicy",
             "affinity": "INTEGER",
             "notNull": true,
-            "defaultValue": "0"
+            "defaultValue": "1"
           },
           {
             "fieldPath": "caMarkingType",
@@ -5472,7 +5479,7 @@
       },
       {
         "tableName": "CourseAssignmentSubmission",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`casUid` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `casAssignmentUid` INTEGER NOT NULL, `casSubmitterUid` INTEGER NOT NULL, `casText` TEXT, `casType` INTEGER NOT NULL, `casTimestamp` INTEGER NOT NULL)",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`casUid` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `casAssignmentUid` INTEGER NOT NULL, `casSubmitterUid` INTEGER NOT NULL, `casSubmitterPersonUid` INTEGER NOT NULL, `casText` TEXT, `casType` INTEGER NOT NULL, `casTimestamp` INTEGER NOT NULL)",
         "fields": [
           {
             "fieldPath": "casUid",
@@ -5489,6 +5496,12 @@
           {
             "fieldPath": "casSubmitterUid",
             "columnName": "casSubmitterUid",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "casSubmitterPersonUid",
+            "columnName": "casSubmitterPersonUid",
             "affinity": "INTEGER",
             "notNull": true
           },
@@ -5578,7 +5591,7 @@
       },
       {
         "tableName": "CourseAssignmentMark",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`camUid` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `camAssignmentUid` INTEGER NOT NULL, `camStudentUid` INTEGER NOT NULL, `camMark` INTEGER NOT NULL, `camPenalty` INTEGER NOT NULL, `camLct` INTEGER NOT NULL)",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`camUid` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `camAssignmentUid` INTEGER NOT NULL, `camSubmitterUid` INTEGER NOT NULL, `camMark` REAL NOT NULL, `camPenalty` INTEGER NOT NULL, `camLct` INTEGER NOT NULL)",
         "fields": [
           {
             "fieldPath": "camUid",
@@ -5593,15 +5606,15 @@
             "notNull": true
           },
           {
-            "fieldPath": "camStudentUid",
-            "columnName": "camStudentUid",
+            "fieldPath": "camSubmitterUid",
+            "columnName": "camSubmitterUid",
             "affinity": "INTEGER",
             "notNull": true
           },
           {
             "fieldPath": "camMark",
             "columnName": "camMark",
-            "affinity": "INTEGER",
+            "affinity": "REAL",
             "notNull": true
           },
           {
@@ -6124,7 +6137,7 @@
       },
       {
         "tableName": "CourseBlock",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`cbUid` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `cbType` INTEGER NOT NULL, `cbIndentLevel` INTEGER NOT NULL, `cbModuleParentBlockUid` INTEGER NOT NULL, `cbTitle` TEXT, `cbDescription` TEXT, `cbCompletionCriteria` INTEGER NOT NULL, `cbHideUntilDate` INTEGER NOT NULL, `cbDeadlineDate` INTEGER NOT NULL, `cbLateSubmissionPenalty` INTEGER NOT NULL, `cbGracePeriodDate` INTEGER NOT NULL, `cbMaxPoints` INTEGER NOT NULL, `cbIndex` INTEGER NOT NULL, `cbClazzUid` INTEGER NOT NULL, `cbActive` INTEGER NOT NULL, `cbHidden` INTEGER NOT NULL, `cbEntityUid` INTEGER NOT NULL, `cbLct` INTEGER NOT NULL)",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`cbUid` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `cbType` INTEGER NOT NULL, `cbIndentLevel` INTEGER NOT NULL, `cbModuleParentBlockUid` INTEGER NOT NULL, `cbTitle` TEXT, `cbDescription` TEXT, `cbCompletionCriteria` INTEGER NOT NULL, `cbHideUntilDate` INTEGER NOT NULL, `cbDeadlineDate` INTEGER NOT NULL, `cbLateSubmissionPenalty` INTEGER NOT NULL, `cbGracePeriodDate` INTEGER NOT NULL, `cbMaxPoints` INTEGER NOT NULL, `cbMinPoints` INTEGER NOT NULL, `cbIndex` INTEGER NOT NULL, `cbClazzUid` INTEGER NOT NULL, `cbActive` INTEGER NOT NULL, `cbHidden` INTEGER NOT NULL, `cbEntityUid` INTEGER NOT NULL, `cbLct` INTEGER NOT NULL)",
         "fields": [
           {
             "fieldPath": "cbUid",
@@ -6195,6 +6208,12 @@
           {
             "fieldPath": "cbMaxPoints",
             "columnName": "cbMaxPoints",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "cbMinPoints",
+            "columnName": "cbMinPoints",
             "affinity": "INTEGER",
             "notNull": true
           },
@@ -10158,12 +10177,851 @@
           }
         ],
         "foreignKeys": []
+      },
+      {
+        "tableName": "Chat",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`chatUid` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `chatStartDate` INTEGER NOT NULL, `chatTitle` TEXT, `chatGroup` INTEGER NOT NULL, `chatLct` INTEGER NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "chatUid",
+            "columnName": "chatUid",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "chatStartDate",
+            "columnName": "chatStartDate",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "chatTitle",
+            "columnName": "chatTitle",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "chatGroup",
+            "columnName": "chatGroup",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "chatLct",
+            "columnName": "chatLct",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "columnNames": [
+            "chatUid"
+          ],
+          "autoGenerate": true
+        },
+        "indices": [],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "ChatMember",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`chatMemberUid` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `chatMemberChatUid` INTEGER NOT NULL, `chatMemberPersonUid` INTEGER NOT NULL, `chatMemberJoinedDate` INTEGER NOT NULL, `chatMemberLeftDate` INTEGER NOT NULL, `chatMemberLct` INTEGER NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "chatMemberUid",
+            "columnName": "chatMemberUid",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "chatMemberChatUid",
+            "columnName": "chatMemberChatUid",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "chatMemberPersonUid",
+            "columnName": "chatMemberPersonUid",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "chatMemberJoinedDate",
+            "columnName": "chatMemberJoinedDate",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "chatMemberLeftDate",
+            "columnName": "chatMemberLeftDate",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "chatMemberLct",
+            "columnName": "chatMemberLct",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "columnNames": [
+            "chatMemberUid"
+          ],
+          "autoGenerate": true
+        },
+        "indices": [],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "Message",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`messageUid` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `messageSenderPersonUid` INTEGER NOT NULL, `messageTableId` INTEGER NOT NULL, `messageEntityUid` INTEGER NOT NULL, `messageText` TEXT, `messageTimestamp` INTEGER NOT NULL, `messageClazzUid` INTEGER NOT NULL, `messageLct` INTEGER NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "messageUid",
+            "columnName": "messageUid",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "messageSenderPersonUid",
+            "columnName": "messageSenderPersonUid",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "messageTableId",
+            "columnName": "messageTableId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "messageEntityUid",
+            "columnName": "messageEntityUid",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "messageText",
+            "columnName": "messageText",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "messageTimestamp",
+            "columnName": "messageTimestamp",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "messageClazzUid",
+            "columnName": "messageClazzUid",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "messageLct",
+            "columnName": "messageLct",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "columnNames": [
+            "messageUid"
+          ],
+          "autoGenerate": true
+        },
+        "indices": [],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "MessageReplicate",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`messagePk` INTEGER NOT NULL, `messageVersionId` INTEGER NOT NULL DEFAULT 0, `messageDestination` INTEGER NOT NULL, `messagePending` INTEGER NOT NULL DEFAULT 1, PRIMARY KEY(`messagePk`, `messageDestination`))",
+        "fields": [
+          {
+            "fieldPath": "messagePk",
+            "columnName": "messagePk",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "messageVersionId",
+            "columnName": "messageVersionId",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "0"
+          },
+          {
+            "fieldPath": "messageDestination",
+            "columnName": "messageDestination",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "messagePending",
+            "columnName": "messagePending",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "1"
+          }
+        ],
+        "primaryKey": {
+          "columnNames": [
+            "messagePk",
+            "messageDestination"
+          ],
+          "autoGenerate": false
+        },
+        "indices": [
+          {
+            "name": "index_MessageReplicate_messagePk_messageDestination_messageVersionId",
+            "unique": false,
+            "columnNames": [
+              "messagePk",
+              "messageDestination",
+              "messageVersionId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_MessageReplicate_messagePk_messageDestination_messageVersionId` ON `${TABLE_NAME}` (`messagePk`, `messageDestination`, `messageVersionId`)"
+          },
+          {
+            "name": "index_MessageReplicate_messageDestination_messagePending",
+            "unique": false,
+            "columnNames": [
+              "messageDestination",
+              "messagePending"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_MessageReplicate_messageDestination_messagePending` ON `${TABLE_NAME}` (`messageDestination`, `messagePending`)"
+          }
+        ],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "ChatReplicate",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`chatPk` INTEGER NOT NULL, `chatVersionId` INTEGER NOT NULL DEFAULT 0, `chatDestination` INTEGER NOT NULL, `chatPending` INTEGER NOT NULL DEFAULT 1, PRIMARY KEY(`chatPk`, `chatDestination`))",
+        "fields": [
+          {
+            "fieldPath": "chatPk",
+            "columnName": "chatPk",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "chatVersionId",
+            "columnName": "chatVersionId",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "0"
+          },
+          {
+            "fieldPath": "chatDestination",
+            "columnName": "chatDestination",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "chatPending",
+            "columnName": "chatPending",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "1"
+          }
+        ],
+        "primaryKey": {
+          "columnNames": [
+            "chatPk",
+            "chatDestination"
+          ],
+          "autoGenerate": false
+        },
+        "indices": [
+          {
+            "name": "index_ChatReplicate_chatPk_chatDestination_chatVersionId",
+            "unique": false,
+            "columnNames": [
+              "chatPk",
+              "chatDestination",
+              "chatVersionId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_ChatReplicate_chatPk_chatDestination_chatVersionId` ON `${TABLE_NAME}` (`chatPk`, `chatDestination`, `chatVersionId`)"
+          },
+          {
+            "name": "index_ChatReplicate_chatDestination_chatPending",
+            "unique": false,
+            "columnNames": [
+              "chatDestination",
+              "chatPending"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_ChatReplicate_chatDestination_chatPending` ON `${TABLE_NAME}` (`chatDestination`, `chatPending`)"
+          }
+        ],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "ChatMemberReplicate",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`chatMemberPk` INTEGER NOT NULL, `chatMemberVersionId` INTEGER NOT NULL DEFAULT 0, `chatMemberDestination` INTEGER NOT NULL, `chatMemberPending` INTEGER NOT NULL DEFAULT 1, PRIMARY KEY(`chatMemberPk`, `chatMemberDestination`))",
+        "fields": [
+          {
+            "fieldPath": "chatMemberPk",
+            "columnName": "chatMemberPk",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "chatMemberVersionId",
+            "columnName": "chatMemberVersionId",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "0"
+          },
+          {
+            "fieldPath": "chatMemberDestination",
+            "columnName": "chatMemberDestination",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "chatMemberPending",
+            "columnName": "chatMemberPending",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "1"
+          }
+        ],
+        "primaryKey": {
+          "columnNames": [
+            "chatMemberPk",
+            "chatMemberDestination"
+          ],
+          "autoGenerate": false
+        },
+        "indices": [
+          {
+            "name": "index_ChatMemberReplicate_chatMemberPk_chatMemberDestination_chatMemberVersionId",
+            "unique": false,
+            "columnNames": [
+              "chatMemberPk",
+              "chatMemberDestination",
+              "chatMemberVersionId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_ChatMemberReplicate_chatMemberPk_chatMemberDestination_chatMemberVersionId` ON `${TABLE_NAME}` (`chatMemberPk`, `chatMemberDestination`, `chatMemberVersionId`)"
+          },
+          {
+            "name": "index_ChatMemberReplicate_chatMemberDestination_chatMemberPending",
+            "unique": false,
+            "columnNames": [
+              "chatMemberDestination",
+              "chatMemberPending"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_ChatMemberReplicate_chatMemberDestination_chatMemberPending` ON `${TABLE_NAME}` (`chatMemberDestination`, `chatMemberPending`)"
+          }
+        ],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "MessageRead",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`messageReadUid` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `messageReadPersonUid` INTEGER NOT NULL, `messageReadMessageUid` INTEGER NOT NULL, `messageReadEntityUid` INTEGER NOT NULL, `messageReadLct` INTEGER NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "messageReadUid",
+            "columnName": "messageReadUid",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "messageReadPersonUid",
+            "columnName": "messageReadPersonUid",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "messageReadMessageUid",
+            "columnName": "messageReadMessageUid",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "messageReadEntityUid",
+            "columnName": "messageReadEntityUid",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "messageReadLct",
+            "columnName": "messageReadLct",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "columnNames": [
+            "messageReadUid"
+          ],
+          "autoGenerate": true
+        },
+        "indices": [],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "MessageReadReplicate",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`messageReadPk` INTEGER NOT NULL, `messageReadVersionId` INTEGER NOT NULL DEFAULT 0, `messageReadDestination` INTEGER NOT NULL, `messageReadPending` INTEGER NOT NULL DEFAULT 1, PRIMARY KEY(`messageReadPk`, `messageReadDestination`))",
+        "fields": [
+          {
+            "fieldPath": "messageReadPk",
+            "columnName": "messageReadPk",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "messageReadVersionId",
+            "columnName": "messageReadVersionId",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "0"
+          },
+          {
+            "fieldPath": "messageReadDestination",
+            "columnName": "messageReadDestination",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "messageReadPending",
+            "columnName": "messageReadPending",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "1"
+          }
+        ],
+        "primaryKey": {
+          "columnNames": [
+            "messageReadPk",
+            "messageReadDestination"
+          ],
+          "autoGenerate": false
+        },
+        "indices": [
+          {
+            "name": "index_MessageReadReplicate_messageReadPk_messageReadDestination_messageReadVersionId",
+            "unique": false,
+            "columnNames": [
+              "messageReadPk",
+              "messageReadDestination",
+              "messageReadVersionId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_MessageReadReplicate_messageReadPk_messageReadDestination_messageReadVersionId` ON `${TABLE_NAME}` (`messageReadPk`, `messageReadDestination`, `messageReadVersionId`)"
+          },
+          {
+            "name": "index_MessageReadReplicate_messageReadDestination_messageReadPending",
+            "unique": false,
+            "columnNames": [
+              "messageReadDestination",
+              "messageReadPending"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_MessageReadReplicate_messageReadDestination_messageReadPending` ON `${TABLE_NAME}` (`messageReadDestination`, `messageReadPending`)"
+          }
+        ],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "CourseDiscussion",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`courseDiscussionUid` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `courseDiscussionTitle` TEXT, `courseDiscussionDesc` TEXT, `courseDiscussionClazzUid` INTEGER NOT NULL, `courseDiscussionActive` INTEGER NOT NULL, `courseDiscussionLct` INTEGER NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "courseDiscussionUid",
+            "columnName": "courseDiscussionUid",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "courseDiscussionTitle",
+            "columnName": "courseDiscussionTitle",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "courseDiscussionDesc",
+            "columnName": "courseDiscussionDesc",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "courseDiscussionClazzUid",
+            "columnName": "courseDiscussionClazzUid",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "courseDiscussionActive",
+            "columnName": "courseDiscussionActive",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "courseDiscussionLct",
+            "columnName": "courseDiscussionLct",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "columnNames": [
+            "courseDiscussionUid"
+          ],
+          "autoGenerate": true
+        },
+        "indices": [],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "CourseDiscussionReplicate",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`courseDiscussionPk` INTEGER NOT NULL, `courseDiscussionVersionId` INTEGER NOT NULL DEFAULT 0, `courseDiscussionDestination` INTEGER NOT NULL, `courseDiscussionPending` INTEGER NOT NULL DEFAULT 1, PRIMARY KEY(`courseDiscussionPk`, `courseDiscussionDestination`))",
+        "fields": [
+          {
+            "fieldPath": "courseDiscussionPk",
+            "columnName": "courseDiscussionPk",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "courseDiscussionVersionId",
+            "columnName": "courseDiscussionVersionId",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "0"
+          },
+          {
+            "fieldPath": "courseDiscussionDestination",
+            "columnName": "courseDiscussionDestination",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "courseDiscussionPending",
+            "columnName": "courseDiscussionPending",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "1"
+          }
+        ],
+        "primaryKey": {
+          "columnNames": [
+            "courseDiscussionPk",
+            "courseDiscussionDestination"
+          ],
+          "autoGenerate": false
+        },
+        "indices": [
+          {
+            "name": "index_CourseDiscussionReplicate_courseDiscussionPk_courseDiscussionDestination_courseDiscussionVersionId",
+            "unique": false,
+            "columnNames": [
+              "courseDiscussionPk",
+              "courseDiscussionDestination",
+              "courseDiscussionVersionId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_CourseDiscussionReplicate_courseDiscussionPk_courseDiscussionDestination_courseDiscussionVersionId` ON `${TABLE_NAME}` (`courseDiscussionPk`, `courseDiscussionDestination`, `courseDiscussionVersionId`)"
+          },
+          {
+            "name": "index_CourseDiscussionReplicate_courseDiscussionDestination_courseDiscussionPending",
+            "unique": false,
+            "columnNames": [
+              "courseDiscussionDestination",
+              "courseDiscussionPending"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_CourseDiscussionReplicate_courseDiscussionDestination_courseDiscussionPending` ON `${TABLE_NAME}` (`courseDiscussionDestination`, `courseDiscussionPending`)"
+          }
+        ],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "DiscussionTopic",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`discussionTopicUid` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `discussionTopicTitle` TEXT, `discussionTopicDesc` TEXT, `discussionTopicStartDate` INTEGER NOT NULL, `discussionTopicCourseDiscussionUid` INTEGER NOT NULL, `discussionTopicVisible` INTEGER NOT NULL, `discussionTopicArchive` INTEGER NOT NULL, `discussionTopicIndex` INTEGER NOT NULL, `discussionTopicClazzUid` INTEGER NOT NULL, `discussionTopicLct` INTEGER NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "discussionTopicUid",
+            "columnName": "discussionTopicUid",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "discussionTopicTitle",
+            "columnName": "discussionTopicTitle",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "discussionTopicDesc",
+            "columnName": "discussionTopicDesc",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "discussionTopicStartDate",
+            "columnName": "discussionTopicStartDate",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "discussionTopicCourseDiscussionUid",
+            "columnName": "discussionTopicCourseDiscussionUid",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "discussionTopicVisible",
+            "columnName": "discussionTopicVisible",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "discussionTopicArchive",
+            "columnName": "discussionTopicArchive",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "discussionTopicIndex",
+            "columnName": "discussionTopicIndex",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "discussionTopicClazzUid",
+            "columnName": "discussionTopicClazzUid",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "discussionTopicLct",
+            "columnName": "discussionTopicLct",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "columnNames": [
+            "discussionTopicUid"
+          ],
+          "autoGenerate": true
+        },
+        "indices": [],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "DiscussionTopicReplicate",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`discussionTopicPk` INTEGER NOT NULL, `discussionTopicVersionId` INTEGER NOT NULL DEFAULT 0, `discussionTopicDestination` INTEGER NOT NULL, `discussionTopicPending` INTEGER NOT NULL DEFAULT 1, PRIMARY KEY(`discussionTopicPk`, `discussionTopicDestination`))",
+        "fields": [
+          {
+            "fieldPath": "discussionTopicPk",
+            "columnName": "discussionTopicPk",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "discussionTopicVersionId",
+            "columnName": "discussionTopicVersionId",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "0"
+          },
+          {
+            "fieldPath": "discussionTopicDestination",
+            "columnName": "discussionTopicDestination",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "discussionTopicPending",
+            "columnName": "discussionTopicPending",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "1"
+          }
+        ],
+        "primaryKey": {
+          "columnNames": [
+            "discussionTopicPk",
+            "discussionTopicDestination"
+          ],
+          "autoGenerate": false
+        },
+        "indices": [
+          {
+            "name": "index_DiscussionTopicReplicate_discussionTopicPk_discussionTopicDestination_discussionTopicVersionId",
+            "unique": false,
+            "columnNames": [
+              "discussionTopicPk",
+              "discussionTopicDestination",
+              "discussionTopicVersionId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_DiscussionTopicReplicate_discussionTopicPk_discussionTopicDestination_discussionTopicVersionId` ON `${TABLE_NAME}` (`discussionTopicPk`, `discussionTopicDestination`, `discussionTopicVersionId`)"
+          },
+          {
+            "name": "index_DiscussionTopicReplicate_discussionTopicDestination_discussionTopicPending",
+            "unique": false,
+            "columnNames": [
+              "discussionTopicDestination",
+              "discussionTopicPending"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_DiscussionTopicReplicate_discussionTopicDestination_discussionTopicPending` ON `${TABLE_NAME}` (`discussionTopicDestination`, `discussionTopicPending`)"
+          }
+        ],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "DiscussionPost",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`discussionPostUid` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `discussionPostTitle` TEXT, `discussionPostMessage` TEXT, `discussionPostStartDate` INTEGER NOT NULL, `discussionPostDiscussionTopicUid` INTEGER NOT NULL, `discussionPostVisible` INTEGER NOT NULL, `discussionPostArchive` INTEGER NOT NULL, `discussionPostStartedPersonUid` INTEGER NOT NULL, `discussionPostClazzUid` INTEGER NOT NULL, `discussionPostLct` INTEGER NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "discussionPostUid",
+            "columnName": "discussionPostUid",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "discussionPostTitle",
+            "columnName": "discussionPostTitle",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "discussionPostMessage",
+            "columnName": "discussionPostMessage",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "discussionPostStartDate",
+            "columnName": "discussionPostStartDate",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "discussionPostDiscussionTopicUid",
+            "columnName": "discussionPostDiscussionTopicUid",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "discussionPostVisible",
+            "columnName": "discussionPostVisible",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "discussionPostArchive",
+            "columnName": "discussionPostArchive",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "discussionPostStartedPersonUid",
+            "columnName": "discussionPostStartedPersonUid",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "discussionPostClazzUid",
+            "columnName": "discussionPostClazzUid",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "discussionPostLct",
+            "columnName": "discussionPostLct",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "columnNames": [
+            "discussionPostUid"
+          ],
+          "autoGenerate": true
+        },
+        "indices": [],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "DiscussionPostReplicate",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`discussionPostPk` INTEGER NOT NULL, `discussionPostVersionId` INTEGER NOT NULL DEFAULT 0, `discussionPostDestination` INTEGER NOT NULL, `discussionPostPending` INTEGER NOT NULL DEFAULT 1, PRIMARY KEY(`discussionPostPk`, `discussionPostDestination`))",
+        "fields": [
+          {
+            "fieldPath": "discussionPostPk",
+            "columnName": "discussionPostPk",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "discussionPostVersionId",
+            "columnName": "discussionPostVersionId",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "0"
+          },
+          {
+            "fieldPath": "discussionPostDestination",
+            "columnName": "discussionPostDestination",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "discussionPostPending",
+            "columnName": "discussionPostPending",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "1"
+          }
+        ],
+        "primaryKey": {
+          "columnNames": [
+            "discussionPostPk",
+            "discussionPostDestination"
+          ],
+          "autoGenerate": false
+        },
+        "indices": [
+          {
+            "name": "index_DiscussionPostReplicate_discussionPostPk_discussionPostDestination_discussionPostVersionId",
+            "unique": false,
+            "columnNames": [
+              "discussionPostPk",
+              "discussionPostDestination",
+              "discussionPostVersionId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_DiscussionPostReplicate_discussionPostPk_discussionPostDestination_discussionPostVersionId` ON `${TABLE_NAME}` (`discussionPostPk`, `discussionPostDestination`, `discussionPostVersionId`)"
+          },
+          {
+            "name": "index_DiscussionPostReplicate_discussionPostDestination_discussionPostPending",
+            "unique": false,
+            "columnNames": [
+              "discussionPostDestination",
+              "discussionPostPending"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_DiscussionPostReplicate_discussionPostDestination_discussionPostPending` ON `${TABLE_NAME}` (`discussionPostDestination`, `discussionPostPending`)"
+          }
+        ],
+        "foreignKeys": []
       }
     ],
     "views": [],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '43874108f125a10d725ac687447de8bd')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '5e9d04645b5feb24c488f344eb9e6a4c')"
     ]
   }
 }

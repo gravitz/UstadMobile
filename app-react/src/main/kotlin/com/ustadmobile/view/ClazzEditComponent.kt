@@ -3,10 +3,9 @@ package com.ustadmobile.view
 import com.ustadmobile.core.controller.ClazzEdit2Presenter
 import com.ustadmobile.core.controller.UstadEditPresenter
 import com.ustadmobile.core.generated.locale.MessageID
-import com.ustadmobile.core.util.UmPlatformUtil
+import com.ustadmobile.core.impl.nav.viewUri
 import com.ustadmobile.core.util.ext.isAttendanceEnabledAndRecorded
 import com.ustadmobile.core.view.ClazzEdit2View
-import com.ustadmobile.door.DoorLiveData
 import com.ustadmobile.door.DoorMutableLiveData
 import com.ustadmobile.door.ObserverFnWrapper
 import com.ustadmobile.lib.db.entities.*
@@ -21,7 +20,9 @@ import com.ustadmobile.util.Util
 import com.ustadmobile.util.Util.ASSET_ENTRY
 import com.ustadmobile.util.ext.currentBackStackEntrySavedStateMap
 import com.ustadmobile.util.ext.toDate
+import com.ustadmobile.view.components.AttachmentImageComponent
 import com.ustadmobile.view.ext.*
+import io.github.aakira.napier.Napier
 import kotlinx.browser.document
 import org.w3c.dom.Element
 import org.w3c.dom.events.Event
@@ -39,9 +40,6 @@ class ClazzEditComponent (mProps: UmProps): UstadEditComponent<ClazzWithHolidayC
     override val mEditPresenter: UstadEditPresenter<*, ClazzWithHolidayCalendarAndSchoolAndTerminology>?
         get() = mPresenter
 
-    override val viewNames: List<String>
-        get() = listOf(ClazzEdit2View.VIEW_NAME)
-
     private var nameLabel = FieldLabel(text = getString(MessageID.name ))
 
     private var descriptionLabel = FieldLabel(text = getStringWithOptionalLabel(MessageID.description))
@@ -58,11 +56,13 @@ class ClazzEditComponent (mProps: UmProps): UstadEditComponent<ClazzWithHolidayC
 
     private var terminologyLabel = FieldLabel(text = getString(MessageID.terminology))
 
+    private var enrolmentPolicyLabel = FieldLabel(text = getString(MessageID.enrolment_policy))
+
     private var scheduleList: List<Schedule> = listOf()
 
     private var courseBlockList: List<CourseBlockWithEntity> = listOf()
 
-    private var attandenceEnabled = false;
+    private var attandenceEnabled = false
 
     private val scheduleObserver = ObserverFnWrapper<List<Schedule>> {
         setState {
@@ -104,29 +104,6 @@ class ClazzEditComponent (mProps: UmProps): UstadEditComponent<ClazzWithHolidayC
             }
         }
 
-    private var scopeList: List<ScopedGrantAndName>? = null
-
-    private val scopedGrantListObserver = ObserverFnWrapper<List<ScopedGrantAndName>> {
-        setState {
-            scopeList = it
-        }
-    }
-
-    override var scopedGrants: DoorLiveData<List<ScopedGrantAndName>>? = null
-        set(value) {
-            field?.removeObserver(scopedGrantListObserver)
-            field = value
-            field?.observe(this, scopedGrantListObserver)
-        }
-
-    override var coursePicturePath: String? = null
-        get() = field
-        set(value) {
-            setState {
-                field = value
-            }
-        }
-
     override var coursePicture: CoursePicture? = null
         get() = field
         set(value) {
@@ -143,25 +120,43 @@ class ClazzEditComponent (mProps: UmProps): UstadEditComponent<ClazzWithHolidayC
             }
         }
 
+    override var enrolmentPolicyOptions: List<ClazzEdit2Presenter.EnrolmentPolicyOptionsMessageIdOption>? = null
+        get() = field
+        set(value) {
+            setState {
+                field = value
+            }
+        }
+
+
     override var entity: ClazzWithHolidayCalendarAndSchoolAndTerminology? = null
         get() = field
         set(value) {
             if(value?.clazzName != null){
-                ustadComponentTitle = value.clazzName
+                updateUiWithStateChangeDelay {
+                    ustadComponentTitle = value.clazzName
+                }
             }
 
             setState{
+                Napier.d("ClazzEdit: entity set to name=${value?.clazzName}")
                 field = value
                 attandenceEnabled = value?.isAttendanceEnabledAndRecorded() == true
             }
         }
+
+
 
     override fun onCreateView() {
         super.onCreateView()
         setEditTitle(MessageID.add_a_new_course, MessageID.edit_course)
         mPresenter = ClazzEdit2Presenter(this, arguments, this,
             di, this)
-        mPresenter?.onCreate(navController.currentBackStackEntrySavedStateMap())
+        val currentBackStackEntry = navController.currentBackStackEntry
+        val backStackUri = currentBackStackEntry?.viewUri
+        val stateArgs = navController.currentBackStackEntrySavedStateMap()
+        Napier.d("ClazzEdit: backStackUri=$backStackUri state = ${stateArgs.entries.joinToString { "${it.key}=${it.value}" }}")
+        mPresenter?.onCreate(stateArgs)
     }
 
     override fun RBuilder.render() {
@@ -175,7 +170,19 @@ class ClazzEditComponent (mProps: UmProps): UstadEditComponent<ClazzWithHolidayC
 
             umGridContainer(GridSpacing.spacing4) {
                 umItem(GridSize.cells12, GridSize.cells4){
-                    umEntityAvatar(fallbackSrc = ASSET_ENTRY, listItem = true)
+                    child(AttachmentImageComponent::class) {
+                        attrs.attachmentUri = coursePicture?.coursePictureUri
+                        attrs.onNewImageSelected = {
+                            setState {
+                                console.log("ClazzEditComponent: setting course picture uri = $it")
+                                coursePicture?.coursePictureUri = it
+                            }
+                        }
+                        attrs.contentBlock = { attachmentImgSrc ->
+                            umEntityAvatar(src = attachmentImgSrc, fallbackSrc = ASSET_ENTRY,
+                                listItem = true)
+                        }
+                    }
                 }
 
                 umItem(GridSize.cells12, GridSize.cells8){
@@ -314,11 +321,6 @@ class ClazzEditComponent (mProps: UmProps): UstadEditComponent<ClazzWithHolidayC
                                 disabled = !fieldsEnabled,
                                 helperText = holidayCalenderLabel.errorText,
                                 variant = FormControlVariant.outlined,
-                                onChange = {
-                                    setState {
-                                        clazzEndDateError = null
-                                    }
-                                },
                                 onClick = {
                                     mPresenter?.handleHolidayCalendarClicked()
                                 }
@@ -338,6 +340,21 @@ class ClazzEditComponent (mProps: UmProps): UstadEditComponent<ClazzWithHolidayC
                         }
                     }
 
+                    umTextFieldSelect(
+                        "${enrolmentPolicyLabel.text}",
+                        entity?.clazzEnrolmentPolicy.toString(),
+                        enrolmentPolicyLabel.errorText ?: "",
+                        error = enrolmentPolicyLabel.error,
+                        values = enrolmentPolicyOptions?.map {
+                            Pair(it.code.toString(), it.toString())
+                        }?.toList(),
+                        onChange = {
+                            setState {
+                                entity?.clazzEnrolmentPolicy = it.toInt()
+                            }
+                        }
+                    )
+
 
                     umTextField(label = "${terminologyLabel.text}",
                         value = entity?.terminology?.ctTitle,
@@ -349,24 +366,6 @@ class ClazzEditComponent (mProps: UmProps): UstadEditComponent<ClazzWithHolidayC
                             mPresenter?.handleTerminologyClicked()
                         }
                     )
-
-
-                    renderListSectionTitle(getString(MessageID.permissions))
-
-                    mPresenter?.let { presenter ->
-                        scopeList?.let { scopeList ->
-
-                            val newItem = CreateNewItem(true, getString(MessageID.add_person_or_group)){
-                                mPresenter?.scopedGrantOneToManyHelper?.onClickNew()
-                            }
-
-                            renderScopedGrants(presenter.scopedGrantOneToManyHelper,
-                                scopeList.distinctBy { it.name }, newItem){ scope ->
-                                mPresenter?.scopedGrantOneToManyHelper?.onClickEdit(scope)
-                            }
-                        }
-                    }
-
                 }
 
             }
@@ -387,6 +386,12 @@ class ClazzEditComponent (mProps: UmProps): UstadEditComponent<ClazzWithHolidayC
                 },
                 UmDialogOptionItem("assignment",MessageID.assignments, MessageID.add_assignment_block_content_desc) {
                     mPresenter?.handleClickAddAssignment()
+                },
+                UmDialogOptionItem(
+                    "forum",
+                    MessageID.discussion_board,
+                    MessageID.add_discussion_board_desc) {
+                    mPresenter?.handleClickAddDiscussion()
                 }
             )
 
@@ -410,7 +415,8 @@ class ClazzEditComponent (mProps: UmProps): UstadEditComponent<ClazzWithHolidayC
             CourseBlock.BLOCK_MODULE_TYPE to "folder",
             CourseBlock.BLOCK_ASSIGNMENT_TYPE to "assignment_turned_in",
             CourseBlock.BLOCK_CONTENT_TYPE to "smart_display",
-            CourseBlock.BLOCK_TEXT_TYPE to "title"
+            CourseBlock.BLOCK_TEXT_TYPE to "title",
+            CourseBlock.BLOCK_DISCUSSION_TYPE to "forum"
         )
     }
 

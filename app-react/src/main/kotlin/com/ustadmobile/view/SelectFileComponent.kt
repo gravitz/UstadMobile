@@ -1,9 +1,10 @@
 package com.ustadmobile.view
 
-import com.ustadmobile.controller.SelectFilePresenter
+import com.ustadmobile.core.controller.SelectFilePresenterCommon
 import com.ustadmobile.core.generated.locale.MessageID
 import com.ustadmobile.core.util.UMFileUtil.formatFileSize
 import com.ustadmobile.core.view.SelectFileView
+import com.ustadmobile.door.ext.toDoorUri
 import com.ustadmobile.mui.components.GridSize
 import com.ustadmobile.mui.components.themeContext
 import com.ustadmobile.mui.components.umIcon
@@ -31,14 +32,11 @@ import styled.styledInput
 
 class SelectFileComponent(props: UmProps): UstadBaseComponent<UmProps, UmState>(props), SelectFileView {
 
-    private lateinit var mPresenter: SelectFilePresenter
+    private lateinit var mPresenter: SelectFilePresenterCommon
 
     private var dropZoneText: String = getString(MessageID.drag_and_drop_or_click_to_add_file)
 
     private var fileDropZoneManager: FileDropZoneManager? = null
-
-    override val viewNames: List<String>
-        get() = listOf(SelectFileView.VIEW_NAME)
 
     private var selectedFiles: List<File> = listOf()
         get() = field
@@ -72,7 +70,7 @@ class SelectFileComponent(props: UmProps): UstadBaseComponent<UmProps, UmState>(
                         }
                     }
                 }
-            }, STATE_CHANGE_DELAY)
+            }, MIN_STATE_CHANGE_DELAY_TIME)
         }
 
     override var noFileSelectedError: String? = null
@@ -109,12 +107,12 @@ class SelectFileComponent(props: UmProps): UstadBaseComponent<UmProps, UmState>(
 
     override fun onCreateView() {
         super.onCreateView()
-        mPresenter = SelectFilePresenter(this, arguments, this, this, di)
+        mPresenter = SelectFilePresenterCommon(this, arguments, this,  di)
         fabManager?.icon = "upload"
         fabManager?.text = getString(MessageID.upload)
         fabManager?.visible = true
         fabManager?.onClickListener = {
-            mPresenter.handleClickSave(selectedFiles)
+            mPresenter.handleUriSelected(selectedFiles.firstOrNull()?.toDoorUri()?.toString())
         }
         mPresenter.onCreate(mapOf())
     }

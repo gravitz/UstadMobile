@@ -17,10 +17,9 @@ import io.ktor.http.content.*
 import io.ktor.request.*
 import io.ktor.response.*
 import io.ktor.routing.*
-import io.ktor.util.pipeline.*
 import io.ktor.utils.io.*
 import org.kodein.di.instance
-import org.kodein.di.ktor.di
+import org.kodein.di.ktor.closestDI
 import org.kodein.di.on
 import java.io.File
 import java.io.InputStream
@@ -31,7 +30,7 @@ fun Route.ContainerMountRoute() {
 
     route("ContainerMount"){
         get("/recentContainers"){
-            val db: UmAppDatabase by di().on(call).instance(tag = DoorTag.TAG_DB)
+            val db: UmAppDatabase by closestDI().on(call).instance(tag = DoorTag.TAG_DB)
             val entryUids = (call.parameters["uids"]?:"").split(",").map { it.toLong()}
             val result = db.containerDao.findRecentContainerToBeMonitoredWithEntriesUid(entryUids)
             call.respond(result)
@@ -46,8 +45,8 @@ fun Route.ContainerMountRoute() {
         }
 
         get("/{containerUid}/videoParams"){
-            val db: UmAppDatabase by di().on(call).instance(tag = DoorTag.TAG_DB)
-            val systemImpl : UstadMobileSystemImpl by di().on(call).instance()
+            val db: UmAppDatabase by closestDI().on(call).instance(tag = DoorTag.TAG_DB)
+            val systemImpl : UstadMobileSystemImpl by closestDI().on(call).instance()
             val containerUid = call.parameters["containerUid"]?.toLong() ?: 0L
             val container = db.containerDao.findByUidAsync(containerUid)
             if(container != null){
@@ -67,7 +66,7 @@ fun Route.ContainerMountRoute() {
                             videoPath = fileInContainer
                         } else if (fileInContainer == "audio.c2") {
                             audioEntry = entry
-                        } else if (fileInContainer == "subtitle.srt" || fileInContainer.toLowerCase() == "subtitle-english.srt") {
+                        } else if (fileInContainer == "subtitle.srt" || fileInContainer.lowercase() == "subtitle-english.srt") {
 
                             defaultLangName = if (fileInContainer.contains("-"))
                                 fileInContainer.substring(fileInContainer.indexOf("-") + 1, fileInContainer.lastIndexOf("."))
@@ -106,7 +105,7 @@ fun Route.ContainerMountRoute() {
 }
 
 suspend fun Route.serve(call: ApplicationCall, isHeadRequest: Boolean){
-    val db: UmAppDatabase by di().on(call).instance(tag = DoorTag.TAG_DB)
+    val db: UmAppDatabase by closestDI().on(call).instance(tag = DoorTag.TAG_DB)
     val containerUid = call.parameters["containerUid"]?.toLong() ?: 0L
     val contentTypeEpub = call.parameters["contentTypeEpub"]?.toBoolean() ?: false
     val pathInContainer = call.parameters.getAll("paths")?.joinToString("/") ?: ""
@@ -122,7 +121,6 @@ suspend fun Route.serve(call: ApplicationCall, isHeadRequest: Boolean){
         val containerEntryFile = entryWithContainerEntryFile.containerEntryFile
         if(containerEntryFile != null){
             val isRangeRequest = call.request.headers.contains(HttpHeaders.Range)
-            val acceptsGzip = call.request.headers.contains(HttpHeaders.AcceptEncoding)
             val fileIsGzipped = containerEntryFile.compression == COMPRESSION_GZIP
 
             val actualFile = File(containerEntryFile.cefPath as String)
@@ -141,7 +139,8 @@ suspend fun Route.serve(call: ApplicationCall, isHeadRequest: Boolean){
             call.response.header(HttpHeaders.ETag, eTag)
             call.response.header(HttpHeaders.CacheControl, "cache; max-age=${TimeUnit.MINUTES.toSeconds(60)}")
 
-            val ifNonMatch = call.request.headers[HttpHeaders.IfNoneMatch]
+            //To be fixed post-alpha: handle if-none-match headers
+            //val ifNonMatch = call.request.headers[HttpHeaders.IfNoneMatch]
             /*if(ifNonMatch != null && eTag == ifNonMatch){
                 call.respond(HttpStatusCode.NotModified)
                 return
@@ -150,19 +149,36 @@ suspend fun Route.serve(call: ApplicationCall, isHeadRequest: Boolean){
             val contentType = UMFileUtil.getContentType(pathInContainer)
             val mimeType = "${contentType.contentType}/${contentType.contentSubtype}"
 
-            var inputStream: InputStream = if(contentType.contentSubtype.contains("video"))
+            var inputStream = if(isRangeRequest) {
                 RangeInputStream(actualFile.inputStream(), rangeResponse.fromByte, rangeResponse.toByte)
-            else actualFile.inputStream()
-            if(fileIsGzipped && acceptsGzip){
+            }else {
+                actualFile.inputStream()
+            }
+
+            //If the file is Gzipped we need to inflate it. Transfer-encoding is controlled by the
+            // engine, so even if we have stored the file gzipped, and the response will be
+            // gzipped, it must be inflated and deflated again.
+            if(fileIsGzipped){
                 inputStream = GZIPInputStream(inputStream)
             }
+
             if(contentTypeEpub){
-                inputStream = EpubContainerFilter(di()).filterResponse(inputStream, mimeType)
+                inputStream = EpubContainerFilter(closestDI()).filterResponse(inputStream, mimeType)
             }
+
             call.respond(object : OutgoingContent.WriteChannelContent() {
+                override val contentLength: Long?
+                    get() = when {
+                        contentTypeEpub -> null
+                        isRangeRequest -> rangeResponse.actualContentLength
+                        else -> containerEntryFile.ceTotalSize
+                    }
+
                 override val contentType = contentType
+
                 override val status = if(isRangeRequest)
                     HttpStatusCode.PartialContent else HttpStatusCode.OK
+
                 override suspend fun writeTo(channel: ByteWriteChannel) {
                     if(!isHeadRequest){
                         inputStream.use {

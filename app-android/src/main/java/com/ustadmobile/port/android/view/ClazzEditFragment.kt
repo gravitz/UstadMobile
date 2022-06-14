@@ -1,14 +1,10 @@
 package com.ustadmobile.port.android.view
 
-import android.content.Context
-import android.net.Uri
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import androidx.core.net.toFile
 import androidx.lifecycle.Observer
-import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.ListAdapter
@@ -18,7 +14,6 @@ import com.toughra.ustadmobile.databinding.FragmentClazzEditBinding
 import com.toughra.ustadmobile.databinding.ItemScheduleBinding
 import com.ustadmobile.core.controller.BitmaskEditPresenter
 import com.ustadmobile.core.controller.ClazzEdit2Presenter
-import com.ustadmobile.core.controller.ScopedGrantEditPresenter
 import com.ustadmobile.core.controller.UstadEditPresenter
 import com.ustadmobile.core.util.OneToManyJoinEditListener
 import com.ustadmobile.core.util.ext.toStringMap
@@ -26,11 +21,9 @@ import com.ustadmobile.core.view.ClazzEdit2View
 import com.ustadmobile.door.DoorLiveData
 import com.ustadmobile.door.DoorMutableLiveData
 import com.ustadmobile.lib.db.entities.*
-import com.ustadmobile.port.android.util.ext.createTempFileForDestination
 import com.ustadmobile.port.android.view.binding.ImageViewLifecycleObserver2
 import com.ustadmobile.port.android.view.binding.MODE_END_OF_DAY
 import com.ustadmobile.port.android.view.binding.MODE_START_OF_DAY
-import java.io.File
 
 interface ClazzEditFragmentEventHandler {
 
@@ -60,12 +53,6 @@ class ClazzEditFragment() : UstadEditFragment<ClazzWithHolidayCalendarAndSchoolA
 
     private val scheduleObserver = Observer<List<Schedule>?> {
         t -> scheduleRecyclerAdapter?.submitList(t)
-    }
-
-    private var scopedGrantRecyclerAdapter: ScopedGrantAndNameEditRecyclerViewAdapter? = null
-
-    private val scopedGrantListObserver = Observer<List<ScopedGrantAndName>> {
-        t -> scopedGrantRecyclerAdapter?.submitList(t)
     }
 
     private val courseBlockObserver = Observer<List<CourseBlockWithEntity>?> {
@@ -100,11 +87,11 @@ class ClazzEditFragment() : UstadEditFragment<ClazzWithHolidayCalendarAndSchoolA
             mDataBinding?.clazzStartDateError = value
         }
 
-    override var scopedGrants: DoorLiveData<List<ScopedGrantAndName>>? = null
-        set(value) {
-            field?.removeObserver(scopedGrantListObserver)
+
+    override var enrolmentPolicyOptions: List<ClazzEdit2Presenter.EnrolmentPolicyOptionsMessageIdOption>? = null
+        set(value){
             field = value
-            field?.observe(this, scopedGrantListObserver)
+            mDataBinding?.enrolmentPolicy = value
         }
 
     private var imageViewLifecycleObserver: ImageViewLifecycleObserver2? = null
@@ -115,50 +102,10 @@ class ClazzEditFragment() : UstadEditFragment<ClazzWithHolidayCalendarAndSchoolA
             mDataBinding?.coursePicture = value
         }
 
-    /**
-     * This may lead to I/O activity - do not call from the main thread!
-     */
-    override var coursePicturePath: String?
-        get() {
-            val boundPicUri = mDataBinding?.coursePictureUri
-            if(boundPicUri == null) {
-                return null
-            }else{
-                val uriObj = Uri.parse(boundPicUri)
-                if(uriObj.scheme == "file") {
-                    return uriObj.toFile().absolutePath
-                }else {
-                    val tmpFile = findNavController().createTempFileForDestination(requireContext(),
-                        "coursePicture-${System.currentTimeMillis()}")
-                    try {
-                        val input = (context as Context).contentResolver.openInputStream(uriObj) ?: return null
-                        val output = tmpFile.outputStream()
-                        input.copyTo(tmpFile.outputStream())
-                        output.flush()
-                        output.close()
-                        input.close()
-                        return tmpFile.absolutePath
-                    }catch(e: Exception) {
-                        e.printStackTrace()
-                    }
-                    return null
-                }
-            }
-        }
-
-        set(value) {
-            if(value != null) {
-                mDataBinding?.coursePictureUri = Uri.fromFile(File(value)).toString()
-            }else {
-                mDataBinding?.coursePictureUri = null
-            }
-        }
-
-
-
-    class ScheduleRecyclerAdapter(var oneToManyEditListener: OneToManyJoinEditListener<Schedule>?,
-                                  var presenter: ClazzEdit2Presenter?): ListAdapter<Schedule,
-            ScheduleRecyclerAdapter.ScheduleViewHolder>(DIFF_CALLBACK_SCHEDULE) {
+    class ScheduleRecyclerAdapter(
+        var oneToManyEditListener: OneToManyJoinEditListener<Schedule>?,
+        var presenter: ClazzEdit2Presenter?
+    ): ListAdapter<Schedule, ScheduleRecyclerAdapter.ScheduleViewHolder>(DIFF_CALLBACK_SCHEDULE) {
 
         class ScheduleViewHolder(val binding: ItemScheduleBinding): RecyclerView.ViewHolder(binding.root)
 
@@ -202,21 +149,11 @@ class ClazzEditFragment() : UstadEditFragment<ClazzWithHolidayCalendarAndSchoolA
             mDataBinding?.fieldsEnabled = value
         }
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-
-        imageViewLifecycleObserver = ImageViewLifecycleObserver2(
-            requireActivity().activityResultRegistry,null, 1).also {
-            lifecycle.addObserver(it)
-        }
-    }
-
-    override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View? {
+    override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         val rootView: View
 
         mDataBinding = FragmentClazzEditBinding.inflate(inflater, container, false).also {
             rootView = it.root
-            it.imageViewLifecycleObserver = imageViewLifecycleObserver
             it.featuresBitmaskFlags = BitmaskEditPresenter.FLAGS_AVAILABLE
             it.activityEventHandler = this
         }
@@ -230,6 +167,14 @@ class ClazzEditFragment() : UstadEditFragment<ClazzWithHolidayCalendarAndSchoolA
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         setEditFragmentTitle(R.string.add_a_new_course, R.string.edit_course)
+
+
+        imageViewLifecycleObserver = ImageViewLifecycleObserver2(
+            requireActivity().activityResultRegistry,null, 1
+        ).also {
+            mDataBinding?.imageViewLifecycleObserver = it
+            viewLifecycleOwner.lifecycle.addObserver(it)
+        }
 
         mPresenter = ClazzEdit2Presenter(requireContext(), arguments.toStringMap(), this@ClazzEditFragment,
             di, viewLifecycleOwner).withViewLifecycle()
@@ -250,16 +195,6 @@ class ClazzEditFragment() : UstadEditFragment<ClazzWithHolidayCalendarAndSchoolA
         courseBlockRecyclerView?.adapter = courseBlockRecyclerAdapter
         courseBlockRecyclerView?.layoutManager = LinearLayoutManager(requireContext())
 
-        val permissionList = ScopedGrantEditPresenter.PERMISSION_LIST_MAP[Clazz.TABLE_ID]
-            ?: throw IllegalStateException("ScopedGrantEdit permission list not found!")
-        scopedGrantRecyclerAdapter = ScopedGrantAndNameEditRecyclerViewAdapter(
-            mPresenter?.scopedGrantOneToManyHelper, permissionList)
-
-        mDataBinding?.clazzEditFragmentPermissionsInc?.itemScopedGrantOneToNRecycler?.apply {
-            adapter = scopedGrantRecyclerAdapter
-            layoutManager = LinearLayoutManager(requireContext())
-        }
-
         bottomSheetOptionList = listOf(
                 TitleDescBottomSheetOption(
                         requireContext().getString(R.string.module),
@@ -276,11 +211,11 @@ class ClazzEditFragment() : UstadEditFragment<ClazzWithHolidayCalendarAndSchoolA
                 TitleDescBottomSheetOption(
                         requireContext().getString(R.string.assignments),
                         requireContext().getString(R.string.add_assignment_block_content_desc),
-                        CourseBlock.BLOCK_ASSIGNMENT_TYPE)
-               /* TitleDescBottomSheetOption(
+                        CourseBlock.BLOCK_ASSIGNMENT_TYPE),
+                TitleDescBottomSheetOption(
                         requireContext().getString(R.string.discussion_board),
                         requireContext().getString(R.string.add_discussion_board_desc),
-                        CourseBlock.BLOCK_DISCUSSION_TYPE),*/
+                        CourseBlock.BLOCK_DISCUSSION_TYPE),
         )
 
         mPresenter?.onCreate(backStackSavedState)
@@ -304,11 +239,14 @@ class ClazzEditFragment() : UstadEditFragment<ClazzWithHolidayCalendarAndSchoolA
             CourseBlock.BLOCK_MODULE_TYPE -> mPresenter?.handleClickAddModule()
             CourseBlock.BLOCK_CONTENT_TYPE -> mPresenter?.handleClickAddContent()
             CourseBlock.BLOCK_TEXT_TYPE -> mPresenter?.handleClickAddText()
+            CourseBlock.BLOCK_DISCUSSION_TYPE -> mPresenter?.handleClickAddDiscussion()
         }
     }
 
     override fun onDestroyView() {
         super.onDestroyView()
+        mDataBinding?.activityClazzEditScheduleRecyclerview?.adapter = null
+        mDataBinding?.activityEventHandler = null
         mDataBinding = null
         scheduleRecyclerView = null
         scheduleRecyclerAdapter = null
@@ -316,6 +254,7 @@ class ClazzEditFragment() : UstadEditFragment<ClazzWithHolidayCalendarAndSchoolA
         courseBlockRecyclerAdapter = null
         courseBlocks = null
         clazzSchedules = null
+        mPresenter = null
     }
 
     companion object {
@@ -325,7 +264,8 @@ class ClazzEditFragment() : UstadEditFragment<ClazzWithHolidayCalendarAndSchoolA
             CourseBlock.BLOCK_MODULE_TYPE to R.drawable.ic_baseline_folder_open_24,
             CourseBlock.BLOCK_ASSIGNMENT_TYPE to R.drawable.baseline_assignment_turned_in_24,
             CourseBlock.BLOCK_CONTENT_TYPE to R.drawable.video_youtube,
-            CourseBlock.BLOCK_TEXT_TYPE to R.drawable.ic_baseline_title_24
+            CourseBlock.BLOCK_TEXT_TYPE to R.drawable.ic_baseline_title_24,
+            CourseBlock.BLOCK_DISCUSSION_TYPE to R.drawable.ic_baseline_forum_24
         )
 
         @JvmField

@@ -5,25 +5,18 @@ import com.ustadmobile.core.generated.locale.MessageID
 import com.ustadmobile.core.impl.NavigateForResultOptions
 import com.ustadmobile.core.util.ListFilterIdOption
 import com.ustadmobile.core.util.SortOrderOption
-import org.kodein.di.instance
-
 import com.ustadmobile.core.util.ext.*
-import com.ustadmobile.core.view.ClazzEnrolmentListView
-import com.ustadmobile.core.view.ClazzMemberListView
-import com.ustadmobile.core.view.PersonListView
-import com.ustadmobile.core.view.UstadView
+import com.ustadmobile.core.view.*
 import com.ustadmobile.core.view.UstadView.Companion.ARG_CLAZZUID
 import com.ustadmobile.core.view.UstadView.Companion.ARG_FILTER_BY_ENROLMENT_ROLE
 import com.ustadmobile.door.DoorLifecycleOwner
 import com.ustadmobile.door.util.systemTimeInMillis
-import com.ustadmobile.lib.db.entities.ClazzEnrolment
-import com.ustadmobile.lib.db.entities.PersonWithClazzEnrolmentDetails
-import com.ustadmobile.lib.db.entities.Role
-import com.ustadmobile.lib.db.entities.UmAccount
+import com.ustadmobile.lib.db.entities.*
 import io.github.aakira.napier.Napier
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
 import org.kodein.di.DI
+import org.kodein.di.instance
 
 class ClazzMemberListPresenter(context: Any, arguments: Map<String, String>, view: ClazzMemberListView,
                                di: DI, lifecycleOwner: DoorLifecycleOwner)
@@ -75,16 +68,16 @@ class ClazzMemberListPresenter(context: Any, arguments: Map<String, String>, vie
     private fun updateListOnView() {
         view.list = repo.clazzEnrolmentDao.findByClazzUidAndRole(filterByClazzUid,
                 ClazzEnrolment.ROLE_TEACHER, selectedSortOption?.flag ?: 0,
-                searchText.toQueryLikeParam(), view.checkedFilterOptionChip?.optionId ?: 0,
+                searchText.toQueryLikeParam(), view.checkedFilterOptionChip?.optionId ?: ClazzEnrolmentDao.FILTER_ACTIVE_ONLY,
                 mLoggedInPersonUid, systemTimeInMillis())
         view.studentList = repo.clazzEnrolmentDao.findByClazzUidAndRole(filterByClazzUid,
                 ClazzEnrolment.ROLE_STUDENT, selectedSortOption?.flag ?: 0,
-                searchText.toQueryLikeParam(), view.checkedFilterOptionChip?.optionId ?: 0,
+                searchText.toQueryLikeParam(), view.checkedFilterOptionChip?.optionId ?: ClazzEnrolmentDao.FILTER_ACTIVE_ONLY,
                 mLoggedInPersonUid, systemTimeInMillis())
         if (view.addStudentVisible) {
             view.pendingStudentList = db.clazzEnrolmentDao.findByClazzUidAndRole(filterByClazzUid,
                     ClazzEnrolment.ROLE_STUDENT_PENDING, selectedSortOption?.flag ?: 0,
-                    searchText.toQueryLikeParam(), view.checkedFilterOptionChip?.optionId ?: 0,
+                    searchText.toQueryLikeParam(), view.checkedFilterOptionChip?.optionId ?: ClazzEnrolmentDao.FILTER_ACTIVE_ONLY,
                     mLoggedInPersonUid, systemTimeInMillis())
         }
     }
@@ -136,9 +129,23 @@ class ClazzMemberListPresenter(context: Any, arguments: Map<String, String>, vie
         updateListOnView()
     }
 
-    fun handlePickNewMemberClicked(args: Map<String,String>){
-        navigateForResult(
-            NavigateForResultOptions(
+    fun handlePickNewMemberClicked(role: Int) {
+
+        val args = mutableMapOf(
+            PersonListView.ARG_FILTER_EXCLUDE_MEMBERSOFCLAZZ to filterByClazzUid.toString(),
+            ARG_FILTER_BY_ENROLMENT_ROLE to role.toString(),
+            ARG_CLAZZUID to (arguments?.get(ARG_CLAZZUID) ?: "-1"),
+            UstadView.ARG_GO_TO_COMPLETE to ClazzEnrolmentEditView.VIEW_NAME,
+            UstadView.ARG_POPUPTO_ON_FINISH to ClazzMemberListView.VIEW_NAME,
+            ClazzMemberListView.ARG_HIDE_CLAZZES to true.toString(),
+            UstadView.ARG_SAVE_TO_DB to true.toString()
+        ).also {
+            if(role == ClazzEnrolment.ROLE_STUDENT){
+                it[UstadView.ARG_CODE_TABLE] = Clazz.TABLE_ID.toString()
+            }
+        }
+
+        navigateForResult(NavigateForResultOptions(
             this, null,
                 PersonListView.VIEW_NAME,
                 ClazzEnrolment::class,

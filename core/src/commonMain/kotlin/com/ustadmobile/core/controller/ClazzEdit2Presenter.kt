@@ -10,14 +10,10 @@ import com.ustadmobile.core.schedule.localEndOfDay
 import com.ustadmobile.core.schedule.localMidnight
 import com.ustadmobile.core.schedule.toOffsetByTimezone
 import com.ustadmobile.core.util.*
-import com.ustadmobile.core.util.ext.createNewClazzAndGroups
-import com.ustadmobile.core.util.ext.effectiveTimeZone
-import com.ustadmobile.core.util.ext.putEntityAsJson
-import com.ustadmobile.core.util.ext.toTermMap
+import com.ustadmobile.core.util.ext.*
 import com.ustadmobile.core.view.*
 import com.ustadmobile.core.view.UstadEditView.Companion.ARG_ENTITY_JSON
 import com.ustadmobile.core.view.UstadView.Companion.ARG_SCHOOL_UID
-import com.ustadmobile.door.DoorDatabaseRepository
 import com.ustadmobile.door.DoorLifecycleOwner
 import com.ustadmobile.door.ext.doorPrimaryKeyManager
 import com.ustadmobile.door.ext.onDbThenRepoWithTimeout
@@ -25,10 +21,6 @@ import com.ustadmobile.door.ext.onRepoWithFallbackToDb
 import com.ustadmobile.door.ext.withDoorTransactionAsync
 import com.ustadmobile.door.util.systemTimeInMillis
 import com.ustadmobile.lib.db.entities.*
-import com.ustadmobile.lib.db.entities.ScopedGrant.Companion.FLAG_NO_DELETE
-import com.ustadmobile.lib.db.entities.ScopedGrant.Companion.FLAG_PARENT_GROUP
-import com.ustadmobile.lib.db.entities.ScopedGrant.Companion.FLAG_STUDENT_GROUP
-import com.ustadmobile.lib.db.entities.ScopedGrant.Companion.FLAG_TEACHER_GROUP
 import com.ustadmobile.lib.util.getDefaultTimeZoneId
 import kotlinx.coroutines.launch
 import kotlinx.serialization.builtins.ListSerializer
@@ -37,14 +29,44 @@ import kotlinx.serialization.json.Json
 import org.kodein.di.DI
 import org.kodein.di.instance
 
+fun CourseBlockWithEntityDb.asCourseBlockWithEntity(topicList: List<DiscussionTopic>):
+        CourseBlockWithEntity {
+    val relevantTopics: List<DiscussionTopic> = topicList.filter {
+        it.discussionTopicCourseDiscussionUid == this.courseDiscussion?.courseDiscussionUid
+    }.sortedBy { it.discussionTopicIndex }
 
-class ClazzEdit2Presenter(context: Any,
-                          arguments: Map<String, String>, view: ClazzEdit2View,  di : DI,
-                          lifecycleOwner: DoorLifecycleOwner)
-    : UstadEditPresenter<ClazzEdit2View, ClazzWithHolidayCalendarAndSchoolAndTerminology>(context, arguments, view,
-         di, lifecycleOwner), TreeOneToManyJoinEditListener<CourseBlockWithEntity>, ItemTouchHelperListener {
+    val courseBlockWithEntity = CourseBlockWithEntity()
+    courseBlockWithEntity.createFromDb(this)
+    courseBlockWithEntity.topics = relevantTopics
+    courseBlockWithEntity.topicUidsToRemove = listOf()
+
+
+    return courseBlockWithEntity
+
+}
+
+class ClazzEdit2Presenter(
+    context: Any,
+    arguments: Map<String, String>,
+    view: ClazzEdit2View,
+    di : DI,
+    lifecycleOwner: DoorLifecycleOwner
+) : UstadEditPresenter<ClazzEdit2View, ClazzWithHolidayCalendarAndSchoolAndTerminology>(
+    context, arguments, view, di, lifecycleOwner
+), TreeOneToManyJoinEditListener<CourseBlockWithEntity>, ItemTouchHelperListener {
 
     private val json: Json by di.instance()
+
+    enum class EnrolmentPolicyOptions(val optionVal: Int, val messageId: Int) {
+        OPEN(Clazz.CLAZZ_ENROLMENT_POLICY_OPEN,
+            MessageID.open_enrolment),
+        INVITE(Clazz.CLAZZ_ENROLMENT_POLICY_WITH_LINK,
+            MessageID.managed_enrolment),
+    }
+
+    class  EnrolmentPolicyOptionsMessageIdOption(day: EnrolmentPolicyOptions, context: Any, di: DI)
+        : MessageIdOption(day.messageId, context, day.optionVal, di)
+
 
     private val scheduleOneToManyJoinEditHelper
             = OneToManyJoinEditHelperMp(Schedule::scheduleUid,
@@ -58,9 +80,7 @@ class ClazzEdit2Presenter(context: Any,
     val scheduleOneToManyJoinListener = scheduleOneToManyJoinEditHelper.createNavigateForResultListener(
         ScheduleEditView.VIEW_NAME, Schedule.serializer())
 
-    val scopedGrantOneToManyHelper = ScopedGrantOneToManyHelper(repo, this,
-        requireBackStackEntry().savedStateHandle, Clazz.TABLE_ID)
-
+    lateinit var topics: List<DiscussionTopic>
 
     private val courseBlockOneToManyJoinEditHelper
             = OneToManyJoinEditHelperMp(CourseBlockWithEntity::cbUid,
@@ -77,8 +97,10 @@ class ClazzEdit2Presenter(context: Any,
     override fun onCreate(savedState: Map<String, String>?) {
         super.onCreate(savedState)
         view.clazzSchedules = scheduleOneToManyJoinEditHelper.liveList
-        view.scopedGrants = scopedGrantOneToManyHelper.liveList
         view.courseBlocks = courseBlockOneToManyJoinEditHelper.liveList
+        view.enrolmentPolicyOptions = EnrolmentPolicyOptions.values().map {
+            EnrolmentPolicyOptionsMessageIdOption(it, context, di)
+        }
     }
 
     override fun onLoadDataComplete() {
@@ -88,9 +110,7 @@ class ClazzEdit2Presenter(context: Any,
             val timezone = it ?: return@observe
             entity?.clazzTimeZone = timezone
             view.entity = entity
-            UmPlatformUtil.run{
-                requireSavedStateHandle()[RESULT_TIMEZONE_KEY] = null
-            }
+            requireSavedStateHandle()[RESULT_TIMEZONE_KEY] = null
         }
 
         observeSavedStateResult(SAVEDSTATE_KEY_SCHOOL, ListSerializer(School.serializer()),
@@ -99,9 +119,7 @@ class ClazzEdit2Presenter(context: Any,
             entity?.school = school
             entity?.clazzSchoolUid = school.schoolUid
             view.entity = entity
-            UmPlatformUtil.run{
-                requireSavedStateHandle()[SAVEDSTATE_KEY_SCHOOL] = null
-            }
+            requireSavedStateHandle()[SAVEDSTATE_KEY_SCHOOL] = null
         }
 
         observeSavedStateResult(SAVEDSTATE_KEY_HOLIDAYCALENDAR,
@@ -110,9 +128,7 @@ class ClazzEdit2Presenter(context: Any,
             entity?.holidayCalendar = calendar
             entity?.clazzHolidayUMCalendarUid = calendar.umCalendarUid
             view.entity = entity
-            UmPlatformUtil.run {
-                requireSavedStateHandle()[SAVEDSTATE_KEY_HOLIDAYCALENDAR] = null
-            }
+            requireSavedStateHandle()[SAVEDSTATE_KEY_HOLIDAYCALENDAR] = null
         }
 
         observeSavedStateResult(
@@ -122,9 +138,7 @@ class ClazzEdit2Presenter(context: Any,
             entity?.clazzTerminologyUid = terminology.ctUid
             entity?.terminology = terminology
             view.entity = entity
-            UmPlatformUtil.run {
-                requireSavedStateHandle()[SAVEDSTATE_KEY_TERMINOLOGY] = null
-            }
+            requireSavedStateHandle()[SAVEDSTATE_KEY_TERMINOLOGY] = null
         }
 
         observeSavedStateResult(
@@ -133,9 +147,7 @@ class ClazzEdit2Presenter(context: Any,
             val timeZone = it.firstOrNull() ?: return@observeSavedStateResult
             entity?.clazzTimeZone = timeZone
             view.entity = entity
-            UmPlatformUtil.run {
-                requireSavedStateHandle()[RESULT_TIMEZONE_KEY] = null
-            }
+            requireSavedStateHandle()[RESULT_TIMEZONE_KEY] = null
         }
 
         observeSavedStateResult(SAVEDSTATE_KEY_FEATURES,
@@ -143,52 +155,52 @@ class ClazzEdit2Presenter(context: Any,
             val wrapper = it.firstOrNull() ?: return@observeSavedStateResult
             entity?.clazzFeatures = wrapper.longValue
             view.entity = entity
-            UmPlatformUtil.run {
-                requireSavedStateHandle()[SAVEDSTATE_KEY_FEATURES] = null
-            }
+            requireSavedStateHandle()[SAVEDSTATE_KEY_FEATURES] = null
         }
 
         observeSavedStateResult(SAVEDSTATE_KEY_ASSIGNMENT,
-            ListSerializer(ClazzAssignmentWithCourseBlock.serializer()), ClazzAssignmentWithCourseBlock::class){
+            ListSerializer(CourseBlockWithEntity.serializer()), CourseBlockWithEntity::class){
             val newAssignment = it.firstOrNull() ?: return@observeSavedStateResult
 
             val foundBlock: CourseBlockWithEntity = courseBlockOneToManyJoinEditHelper.liveList.getValue()?.find {
-                assignment -> assignment.assignment?.caUid == newAssignment.caUid
+                assignment -> assignment.assignment?.caUid == newAssignment.assignment?.caUid
             } ?: CourseBlockWithEntity().apply {
-                cbClazzUid = newAssignment.caClazzUid
-                cbEntityUid = newAssignment.caUid
-                cbTitle = newAssignment.caTitle
+                cbClazzUid = newAssignment.cbClazzUid
+                cbEntityUid = newAssignment.assignment?.caUid ?: 0
+                cbTitle = newAssignment.assignment?.caTitle
                 cbType = CourseBlock.BLOCK_ASSIGNMENT_TYPE
-                cbDescription = newAssignment.caDescription
+                cbDescription = newAssignment.assignment?.caDescription
                 cbIndex = courseBlockOneToManyJoinEditHelper.liveList.getValue()?.size ?: 0
-                cbUid = newAssignment.block?.cbUid ?: db.doorPrimaryKeyManager.nextId(CourseBlock.TABLE_ID)
-                cbHideUntilDate = newAssignment.block?.cbHideUntilDate ?: 0
-                cbDeadlineDate = newAssignment.block?.cbDeadlineDate ?: Long.MAX_VALUE
-                cbGracePeriodDate = newAssignment.block?.cbHideUntilDate ?: newAssignment.block?.cbDeadlineDate ?: Long.MAX_VALUE
-                cbLateSubmissionPenalty = newAssignment.block?.cbLateSubmissionPenalty ?: 0
-                cbMaxPoints = newAssignment.block?.cbMaxPoints ?: 10
-                assignment = newAssignment
+                cbUid = newAssignment.cbUid
+                cbHideUntilDate = newAssignment.cbHideUntilDate
+                cbDeadlineDate = newAssignment.cbDeadlineDate
+                cbGracePeriodDate = newAssignment.cbGracePeriodDate
+                cbLateSubmissionPenalty = newAssignment.cbLateSubmissionPenalty
+                cbCompletionCriteria = newAssignment.cbCompletionCriteria
+                cbMaxPoints = newAssignment.cbMaxPoints
+
+                assignment = newAssignment.assignment
             }
 
-            foundBlock.assignment = newAssignment
-            foundBlock.cbTitle = newAssignment.caTitle
-            foundBlock.cbDescription = newAssignment.caDescription
-            foundBlock.cbHideUntilDate = newAssignment.block?.cbHideUntilDate ?: 0
-            foundBlock.cbDeadlineDate = newAssignment.block?.cbDeadlineDate ?: Long.MAX_VALUE
-            foundBlock.cbGracePeriodDate = newAssignment.block?.cbHideUntilDate ?: newAssignment.block?.cbDeadlineDate ?: Long.MAX_VALUE
-            foundBlock.cbLateSubmissionPenalty = newAssignment.block?.cbLateSubmissionPenalty ?: 0
-            foundBlock.cbMaxPoints = newAssignment.block?.cbMaxPoints ?: 10
+            foundBlock.assignment = newAssignment.assignment
+            foundBlock.cbTitle = newAssignment.assignment?.caTitle
+            foundBlock.cbDescription = newAssignment.assignment?.caDescription
+            foundBlock.cbHideUntilDate = newAssignment.cbHideUntilDate
+            foundBlock.cbDeadlineDate = newAssignment.cbDeadlineDate
+            foundBlock.cbGracePeriodDate = newAssignment.cbGracePeriodDate
+            foundBlock.cbCompletionCriteria = newAssignment.cbCompletionCriteria
+            foundBlock.cbLateSubmissionPenalty = newAssignment.cbLateSubmissionPenalty
+            foundBlock.cbMaxPoints = newAssignment.cbMaxPoints
 
             courseBlockOneToManyJoinEditHelper.onEditResult(foundBlock)
 
-            UmPlatformUtil.run {
-                requireSavedStateHandle()[SAVEDSTATE_KEY_ASSIGNMENT] = null
-            }
+            requireSavedStateHandle()[SAVEDSTATE_KEY_ASSIGNMENT] = null
+
         }
 
         observeSavedStateResult(
             SAVEDSTATE_KEY_CONTENT,
-            ListSerializer(ContentEntry.serializer()), ContentEntry::class) {
+            ListSerializer(ContentEntryWithBlockAndLanguage.serializer()), ContentEntryWithBlockAndLanguage::class) {
             val newContent = it.firstOrNull() ?: return@observeSavedStateResult
 
             val foundBlock: CourseBlockWithEntity =
@@ -201,20 +213,37 @@ class ClazzEdit2Presenter(context: Any,
                     cbType = CourseBlock.BLOCK_CONTENT_TYPE
                     cbDescription = newContent.description
                     cbIndex = courseBlockOneToManyJoinEditHelper.liveList.getValue()?.size ?: 0
-                    cbUid = db.doorPrimaryKeyManager.nextId(CourseBlock.TABLE_ID)
+                    cbUid = newContent.block?.cbUid ?: db.doorPrimaryKeyManager.nextId(CourseBlock.TABLE_ID)
+
+                    cbHideUntilDate = newContent.block?.cbHideUntilDate ?: 0
+                    cbDeadlineDate = newContent.block?.cbDeadlineDate ?: Long.MAX_VALUE
+                    cbGracePeriodDate = newContent.block?.cbGracePeriodDate ?: Long.MAX_VALUE
+                    cbLateSubmissionPenalty = newContent.block?.cbLateSubmissionPenalty ?: 0
+                    cbCompletionCriteria = newContent.block?.cbCompletionCriteria ?: 0
+                    cbMaxPoints = newContent.block?.cbMaxPoints ?: 10
+                    cbMinPoints = newContent.block?.cbMinPoints ?: 0
+
                     entry = newContent
+                    language = newContent.language
                 }
 
             foundBlock.entry = newContent
+            foundBlock.language = newContent.language
+
             foundBlock.cbTitle = newContent.title
             foundBlock.cbDescription = newContent.description
 
+            foundBlock.cbHideUntilDate = newContent.block?.cbHideUntilDate ?: 0
+            foundBlock.cbDeadlineDate = newContent.block?.cbDeadlineDate ?: Long.MAX_VALUE
+            foundBlock.cbGracePeriodDate = newContent.block?.cbGracePeriodDate ?: Long.MAX_VALUE
+            foundBlock.cbLateSubmissionPenalty = newContent.block?.cbLateSubmissionPenalty ?: 0
+            foundBlock.cbCompletionCriteria = newContent.block?.cbCompletionCriteria ?: 0
+            foundBlock.cbMaxPoints = newContent.block?.cbMaxPoints ?: 10
+            foundBlock.cbMinPoints = newContent.block?.cbMinPoints ?: 0
+
             courseBlockOneToManyJoinEditHelper.onEditResult(foundBlock)
 
-            UmPlatformUtil.run {
-                requireSavedStateHandle()[SAVEDSTATE_KEY_CONTENT] = null
-            }
-
+            requireSavedStateHandle()[SAVEDSTATE_KEY_CONTENT] = null
         }
 
         observeSavedStateResult(ARG_SAVEDSTATE_MODULE,
@@ -240,9 +269,7 @@ class ClazzEdit2Presenter(context: Any,
 
             courseBlockOneToManyJoinEditHelper.onEditResult(foundBlock)
 
-            UmPlatformUtil.run {
-                requireSavedStateHandle()[ARG_SAVEDSTATE_MODULE] = null
-            }
+            requireSavedStateHandle()[ARG_SAVEDSTATE_MODULE] = null
         }
         observeSavedStateResult(ARG_SAVEDSTATE_TEXT,
             ListSerializer(CourseBlock.serializer()), CourseBlock::class){
@@ -267,13 +294,60 @@ class ClazzEdit2Presenter(context: Any,
 
             courseBlockOneToManyJoinEditHelper.onEditResult(foundBlock)
 
-            UmPlatformUtil.run {
-                requireSavedStateHandle()[ARG_SAVEDSTATE_TEXT] = null
+            requireSavedStateHandle()[ARG_SAVEDSTATE_TEXT] = null
+        }
+
+
+        observeSavedStateResult(
+            SAVEDSTATE_KEY_DISCUSSION,
+            ListSerializer(CourseBlockWithEntity.serializer()), CourseBlockWithEntity::class){
+            val newDiscussion = it.firstOrNull() ?: return@observeSavedStateResult
+
+            val foundBlock: CourseBlockWithEntity = courseBlockOneToManyJoinEditHelper.liveList.getValue()?.find {
+                    discussion -> discussion.courseDiscussion?.courseDiscussionUid == newDiscussion.courseDiscussion?.courseDiscussionUid
+            } ?: CourseBlockWithEntity().apply {
+                cbClazzUid = newDiscussion.cbClazzUid
+                cbEntityUid = newDiscussion.courseDiscussion?.courseDiscussionUid ?: 0
+                cbTitle = newDiscussion.courseDiscussion?.courseDiscussionTitle
+                cbType = CourseBlock.BLOCK_DISCUSSION_TYPE
+                cbDescription = newDiscussion.courseDiscussion?.courseDiscussionDesc
+                cbIndex = courseBlockOneToManyJoinEditHelper.liveList.getValue()?.size ?: 0
+                cbUid = newDiscussion.cbUid
+                cbHideUntilDate = newDiscussion.cbHideUntilDate
+                cbDeadlineDate = newDiscussion.cbDeadlineDate
+                cbGracePeriodDate = newDiscussion.cbGracePeriodDate
+                cbLateSubmissionPenalty = newDiscussion.cbLateSubmissionPenalty
+                cbCompletionCriteria = newDiscussion.cbCompletionCriteria
+                cbMaxPoints = newDiscussion.cbMaxPoints
+
+                courseDiscussion = newDiscussion.courseDiscussion
+
+                topics = newDiscussion.topics
+                topicUidsToRemove = newDiscussion.topicUidsToRemove
             }
+
+            foundBlock.courseDiscussion = newDiscussion.courseDiscussion
+            foundBlock.cbTitle = newDiscussion.courseDiscussion?.courseDiscussionTitle
+            foundBlock.cbDescription = newDiscussion.courseDiscussion?.courseDiscussionDesc
+            foundBlock.cbHideUntilDate = newDiscussion.cbHideUntilDate
+            foundBlock.cbDeadlineDate = newDiscussion.cbDeadlineDate
+            foundBlock.cbGracePeriodDate = newDiscussion.cbGracePeriodDate
+            foundBlock.cbCompletionCriteria = newDiscussion.cbCompletionCriteria
+            foundBlock.cbLateSubmissionPenalty = newDiscussion.cbLateSubmissionPenalty
+            foundBlock.cbMaxPoints = newDiscussion.cbMaxPoints
+
+            foundBlock.topics = newDiscussion.topics
+            foundBlock.topicUidsToRemove = newDiscussion.topicUidsToRemove
+
+            courseBlockOneToManyJoinEditHelper.onEditResult(foundBlock)
+
+            requireSavedStateHandle()[SAVEDSTATE_KEY_DISCUSSION] = null
         }
     }
 
-    override suspend fun onLoadEntityFromDb(db: UmAppDatabase): ClazzWithHolidayCalendarAndSchoolAndTerminology? {
+
+
+    override suspend fun onLoadEntityFromDb(db: UmAppDatabase): ClazzWithHolidayCalendarAndSchoolAndTerminology {
         val clazzUid = arguments[UstadView.ARG_ENTITY_UID]?.toLong() ?: 0L
 
         val clazz = db.onRepoWithFallbackToDb(2000) {
@@ -282,6 +356,7 @@ class ClazzEdit2Presenter(context: Any,
             newClazz.clazzUid = db.doorPrimaryKeyManager.nextId(Clazz.TABLE_ID)
             newClazz.clazzName = ""
             newClazz.isClazzActive = true
+            newClazz.clazzStartTime = systemTimeInMillis()
             newClazz.clazzTimeZone = getDefaultTimeZoneId()
             newClazz.clazzSchoolUid = arguments[ARG_SCHOOL_UID]?.toLong() ?: 0L
             newClazz.school = db.schoolDao.takeIf { newClazz.clazzSchoolUid != 0L }?.findByUidAsync(newClazz.clazzSchoolUid)
@@ -297,64 +372,28 @@ class ClazzEdit2Presenter(context: Any,
         } ?: listOf()
         scheduleOneToManyJoinEditHelper.liveList.sendValue(schedules)
 
-        val courseBlocks: List<CourseBlockWithEntity> = db.onRepoWithFallbackToDb(2000){
+        val courseBlocksDb: List<CourseBlockWithEntityDb> = db.onRepoWithFallbackToDb(2000){
             it.courseBlockDao.takeIf { clazzUid != 0L }?.findAllCourseBlockByClazzUidAsync(clazzUid)
         } ?: listOf()
-        courseBlockOneToManyJoinEditHelper.liveList.sendValue(courseBlocks)
 
-        val termMap = db.courseTerminologyDao.findByUidAsync(clazz.clazzTerminologyUid)
-            .toTermMap(json, systemImpl, context)
-
-        if(clazzUid != 0L) {
-            val scopedGrants = db.onRepoWithFallbackToDb(2000) {
-                it.scopedGrantDao.findByTableIdAndEntityUid(Clazz.TABLE_ID, clazzUid)
-            }
-            scopedGrantOneToManyHelper.liveList.setVal(scopedGrants)
-        }else if(db is DoorDatabaseRepository){
-            /*
-            This should be enabled once a field has been added on Clazz for the adminGroupUid
-            scopedGrantOneToManyHelper.onEditResult(ScopedGrantAndName().apply {
-                name = "Admins"
-                scopedGrant = ScopedGrant().apply {
-                    sgFlags = ScopedGrant.FLAG_ADMIN_GROUP.or(FLAG_NO_DELETE)
-                    sgPermissions = Role.ALL_PERMISSIONS
-                }
-            })
-            */
-
-            scopedGrantOneToManyHelper.onEditResult(ScopedGrantAndName().apply {
-                name = termMap[TerminologyKeys.TEACHERS_KEY]
-                scopedGrant = ScopedGrant().apply {
-                    sgFlags = ScopedGrant.FLAG_TEACHER_GROUP.or(FLAG_NO_DELETE)
-                    sgPermissions = Role.ROLE_CLAZZ_TEACHER_PERMISSIONS_DEFAULT
-                }
-            })
-
-            scopedGrantOneToManyHelper.onEditResult(ScopedGrantAndName().apply {
-                name = termMap[TerminologyKeys.STUDENTS_KEY]
-                scopedGrant = ScopedGrant().apply {
-                    sgFlags = ScopedGrant.FLAG_STUDENT_GROUP.or(FLAG_NO_DELETE)
-                    sgPermissions = Role.ROLE_CLAZZ_STUDENT_PERMISSIONS_DEFAULT
-                }
-            })
-
-            scopedGrantOneToManyHelper.onEditResult(ScopedGrantAndName().apply {
-                name = "Parents"
-                scopedGrant = ScopedGrant().apply {
-                    sgFlags = (ScopedGrant.FLAG_PARENT_GROUP or FLAG_NO_DELETE)
-                    sgPermissions = Role.ROLE_CLAZZ_PARENT_PERMISSION_DEFAULT
-                }
-            })
+        //Get topics
+        topics = db.onRepoWithFallbackToDb(2000){
+            it.discussionTopicDao.getTopicsByClazz(clazzUid)
         }
+
+        val courseBlocks: List<CourseBlockWithEntity> = courseBlocksDb.map {
+            it.asCourseBlockWithEntity(topics)
+        }
+
+        courseBlockOneToManyJoinEditHelper.liveList.sendValue(courseBlocks)
 
         return clazz
     }
 
-    override fun onLoadFromJson(bundle: Map<String, String>): ClazzWithHolidayCalendarAndSchoolAndTerminology? {
+    override fun onLoadFromJson(bundle: Map<String, String>): ClazzWithHolidayCalendarAndSchoolAndTerminology {
         super.onLoadFromJson(bundle)
         val clazzJsonStr = bundle[ARG_ENTITY_JSON]
-        var clazz: ClazzWithHolidayCalendarAndSchoolAndTerminology? = null
-        clazz = if(clazzJsonStr != null) {
+        val clazz = if(clazzJsonStr != null) {
             safeParse(di, ClazzWithHolidayCalendarAndSchoolAndTerminology.serializer(), clazzJsonStr)
         }else {
             ClazzWithHolidayCalendarAndSchoolAndTerminology()
@@ -362,14 +401,17 @@ class ClazzEdit2Presenter(context: Any,
 
         scheduleOneToManyJoinEditHelper.onLoadFromJsonSavedState(bundle)
         courseBlockOneToManyJoinEditHelper.onLoadFromJsonSavedState(bundle)
+        view.coursePicture = bundle[SAVEDSTATE_KEY_COURSEPICTURE]?.let {
+            json.decodeFromString(CoursePicture.serializer(), it)
+        }
         return clazz
     }
 
     override fun onSaveInstanceState(savedState: MutableMap<String, String>) {
         super.onSaveInstanceState(savedState)
-        val entityVal = entity ?: return
-        savedState.putEntityAsJson(ARG_ENTITY_JSON, null,
-                    entityVal)
+        val entityVal = view.entity ?: return
+        savedState.putEntityAsJson(SAVEDSTATE_KEY_COURSEPICTURE, null, view.coursePicture)
+        savedState.putEntityAsJson(ARG_ENTITY_JSON, null, entityVal)
     }
 
     fun handleClickTimezone() {
@@ -423,20 +465,26 @@ class ClazzEdit2Presenter(context: Any,
     }
 
     override fun handleClickSave(entity: ClazzWithHolidayCalendarAndSchoolAndTerminology) {
+        if(!view.fieldsEnabled)
+            return
+
+        view.fieldsEnabled = false
+
         presenterScope.launch {
 
             if (entity.clazzStartTime == 0L) {
                 view.clazzStartDateError = systemImpl.getString(MessageID.field_required_prompt, context)
+                view.fieldsEnabled = true
                 return@launch
             }
 
             if (entity.clazzEndTime <= entity.clazzStartTime) {
                 view.clazzEndDateError = systemImpl.getString(MessageID.end_is_before_start_error, context)
+                view.fieldsEnabled = true
                 return@launch
             }
 
             view.loading = true
-            view.fieldsEnabled = false
 
             entity.clazzStartTime = DateTime(entity.clazzStartTime)
                     .toOffsetByTimezone(entity.effectiveTimeZone).localMidnight.utc.unixMillisLong
@@ -457,10 +505,13 @@ class ClazzEdit2Presenter(context: Any,
             }
             courseBlockOneToManyJoinEditHelper.liveList.sendValue(courseBlockList)
 
+
             repo.withDoorTransactionAsync(UmAppDatabase::class) { txDb ->
 
                 if((arguments[UstadView.ARG_ENTITY_UID]?.toLongOrNull() ?: 0L) == 0L) {
-                    txDb.createNewClazzAndGroups(entity, systemImpl, context)
+                    val termMap = db.courseTerminologyDao.findByUidAsync(entity.clazzTerminologyUid)
+                        .toTermMap(json, systemImpl, context)
+                    txDb.createNewClazzAndGroups(entity, systemImpl, termMap, context)
                 }else {
                     txDb.clazzDao.updateAsync(entity)
                 }
@@ -468,13 +519,6 @@ class ClazzEdit2Presenter(context: Any,
                 scheduleOneToManyJoinEditHelper.commitToDatabase(txDb.scheduleDao) {
                     it.scheduleClazzUid = entity.clazzUid
                 }
-
-                scopedGrantOneToManyHelper.commitToDatabase(txDb, entity.clazzUid, flagToGroupMap = mapOf(
-                    FLAG_TEACHER_GROUP to entity.clazzTeachersPersonGroupUid,
-                    FLAG_STUDENT_GROUP to entity.clazzStudentsPersonGroupUid,
-                    FLAG_PARENT_GROUP to entity.clazzParentsPersonGroupUid,
-                ))
-
 
                 val assignmentList = courseBlockOneToManyJoinEditHelper.entitiesToInsert.mapNotNull { it.assignment }
                 txDb.clazzAssignmentDao.insertListAsync(assignmentList)
@@ -496,26 +540,46 @@ class ClazzEdit2Presenter(context: Any,
                     txDb.clazzAssignmentDao.updateAsync(assignment)
                 }
 
+                txDb.courseDiscussionDao.replaceListAsync(
+                    courseBlockOneToManyJoinEditHelper.entitiesToInsert.mapNotNull {
+                        it.courseDiscussion
+                    } +
+                    courseBlockOneToManyJoinEditHelper.entitiesToUpdate.mapNotNull {
+                        it.courseDiscussion
+                    })
+                txDb.courseDiscussionDao.deactivateByUids(
+                    courseBlockOneToManyJoinEditHelper.primaryKeysToDeactivate, systemTimeInMillis())
+
+
+                //Save Discussion Topic
+
+                val tti : List<DiscussionTopic> = courseBlockList.mapNotNull{
+                    it.topics
+                }.flatten()
+
+                txDb.discussionTopicDao.replaceListAsync(tti)
+
+                val topicUidsToDelete: List<Long> = courseBlockList.mapNotNull{it.topicUidsToRemove }
+                    .flatten()
+
+                txDb.discussionTopicDao.deactivateByUids(topicUidsToDelete, systemTimeInMillis())
+
                 txDb.courseBlockDao.replaceListAsync(courseBlockList)
                 txDb.courseBlockDao.deactivateByUids(
                     courseBlockOneToManyJoinEditHelper.primaryKeysToDeactivate,
                     systemTimeInMillis())
 
-            }
-
-            UmPlatformUtil.runAsync {
                 val coursePictureVal = view.coursePicture
                 if(coursePictureVal != null) {
                     coursePictureVal.coursePictureClazzUid = entity.clazzUid
 
                     if(coursePictureVal.coursePictureUid == 0L) {
-                        repo.coursePictureDao.insertAsync(coursePictureVal)
+                        txDb.coursePictureDao.insertAsync(coursePictureVal)
                     }else {
-                        repo.coursePictureDao.updateAsync(coursePictureVal)
+                        txDb.coursePictureDao.updateAsync(coursePictureVal)
                     }
                 }
             }
-
 
             val fromDateTime = DateTime.now().toOffsetByTimezone(entity.effectiveTimeZone).localMidnight
             val clazzLogCreatorManager: ClazzLogCreatorManager by di.instance()
@@ -524,45 +588,41 @@ class ClazzEdit2Presenter(context: Any,
                     fromDateTime.utc.unixMillisLong, fromDateTime.localEndOfDay.utc.unixMillisLong)
             view.loading = false
 
-            //Handle the following scenario: PersonEdit (user selects to add an enrolment), ClazzList
-            // ClazzEdit, EnrolmentEdit
-            if(arguments.containsKey(UstadView.ARG_GO_TO_COMPLETE)) {
-                systemImpl.go(arguments[UstadView.ARG_GO_TO_COMPLETE].toString(),
-                        arguments.plus(UstadView.ARG_CLAZZUID to entity.clazzUid.toString()),
-                        context)
-            }else{
-                onFinish(ClazzDetailView.VIEW_NAME, entity.clazzUid, entity, ClazzWithHolidayCalendarAndSchoolAndTerminology.serializer())
-            }
+            onFinish(ClazzDetailView.VIEW_NAME, entity.clazzUid, entity,
+                ClazzWithHolidayCalendarAndSchoolAndTerminology.serializer())
         }
     }
 
     fun handleClickAddAssignment() {
         val args = mutableMapOf<String, String>()
         args[UstadView.ARG_CLAZZUID] = entity?.clazzUid.toString()
+        if(entity != null){
+            args[ClazzAssignmentEditView.TERMINOLOGY_ID] = entity?.clazzTerminologyUid.toString()
+        }
 
         navigateForResult(NavigateForResultOptions(
                 this,
                 currentEntityValue = null,
                 destinationViewName = ClazzAssignmentEditView.VIEW_NAME,
-                entityClass = ClazzAssignmentWithCourseBlock::class,
-                serializationStrategy = ClazzAssignmentWithCourseBlock.serializer(),
+                entityClass = CourseBlockWithEntity::class,
+                serializationStrategy = CourseBlockWithEntity.serializer(),
                 destinationResultKey = SAVEDSTATE_KEY_ASSIGNMENT,
                 arguments = args))
     }
 
     fun handleClickAddContent(){
         val args = mutableMapOf(
-            ContentEntryList2View.ARG_DISPLAY_CONTENT_BY_OPTION to
-                ContentEntryList2View.ARG_DISPLAY_CONTENT_BY_PARENT,
-            UstadView.ARG_PARENT_ENTRY_UID to UstadView.MASTER_SERVER_ROOT_ENTRY_UID.toString(),
-            ContentEntryList2View.ARG_SELECT_FOLDER_VISIBLE to false.toString()
+            ContentEntryList2View.ARG_SELECT_FOLDER_VISIBLE to false.toString(),
+            ContentEntryList2View.ARG_USE_CHIPS to true.toString(),
+            UstadView.ARG_CLAZZUID to entity?.clazzUid.toString(),
+            ContentEntryEdit2View.BLOCK_REQUIRED to true.toString(),
         )
 
         navigateForResult(NavigateForResultOptions(
             this, null,
             ContentEntryList2View.VIEW_NAME,
-            ContentEntry::class,
-            ContentEntry.serializer(),
+            ContentEntryWithBlockAndLanguage::class,
+            ContentEntryWithBlockAndLanguage.serializer(),
             SAVEDSTATE_KEY_CONTENT,
             arguments = args)
         )
@@ -582,6 +642,21 @@ class ClazzEdit2Presenter(context: Any,
             arguments = args))
     }
 
+    fun handleClickAddDiscussion(){
+        val args = mutableMapOf<String, String>()
+        args[UstadView.ARG_CLAZZUID] = entity?.clazzUid.toString()
+
+        navigateForResult(NavigateForResultOptions(
+            this,
+            currentEntityValue = null,
+            destinationViewName = CourseDiscussionEditView.VIEW_NAME,
+            entityClass = CourseDiscussion::class,
+            serializationStrategy = CourseDiscussion.serializer(),
+            destinationResultKey = SAVEDSTATE_KEY_DISCUSSION,
+            arguments = args))
+
+    }
+
     fun handleClickAddText(){
         val args = mutableMapOf<String, String>()
         args[UstadView.ARG_CLAZZUID] = entity?.clazzUid.toString()
@@ -596,30 +671,6 @@ class ClazzEdit2Presenter(context: Any,
             arguments = args))
     }
 
-    companion object {
-
-        const val ARG_SAVEDSTATE_SCHEDULES = "schedules"
-
-        const val ARG_SAVEDSTATE_BLOCK = "courseBlocks"
-
-        const val ARG_SAVEDSTATE_MODULE = "courseModule"
-
-        const val ARG_SAVEDSTATE_TEXT = "courseText"
-
-        const val SAVEDSTATE_KEY_SCHOOL = "School"
-
-        const val SAVEDSTATE_KEY_ASSIGNMENT = "Assignment"
-
-        const val SAVEDSTATE_KEY_CONTENT = "courseContent"
-
-        const val SAVEDSTATE_KEY_HOLIDAYCALENDAR = "ClazzHolidayCalendar"
-
-        const val SAVEDSTATE_KEY_FEATURES = "ClazzFeatures"
-
-        const val SAVEDSTATE_KEY_TERMINOLOGY ="ClazzTerminology"
-
-    }
-
     override fun onClickNew() {
     }
 
@@ -630,26 +681,63 @@ class ClazzEdit2Presenter(context: Any,
                 val args = mutableMapOf<String, String>()
                 args[UstadView.ARG_CLAZZUID] = (joinedEntity.assignment?.caClazzUid ?: entity?.clazzUid ?: 0L).toString()
                 args[UstadView.ARG_ENTITY_UID] = (joinedEntity.assignment?.caUid ?: 0L).toString()
+                if(entity != null){
+                    args[ClazzAssignmentEditView.TERMINOLOGY_ID] = entity?.clazzTerminologyUid.toString()
+                }
 
                 NavigateForResultOptions(
                         this,
-                        currentEntityValue = null,
+                        currentEntityValue = joinedEntity,
                         destinationViewName = ClazzAssignmentEditView.VIEW_NAME,
-                        entityClass = ClazzAssignmentWithCourseBlock::class,
-                        serializationStrategy = ClazzAssignmentWithCourseBlock.serializer(),
+                        entityClass = CourseBlockWithEntity::class,
+                        serializationStrategy = CourseBlockWithEntity.serializer(),
                         destinationResultKey = SAVEDSTATE_KEY_ASSIGNMENT,
                         arguments = args)
             }
             CourseBlock.BLOCK_CONTENT_TYPE -> {
+
+                val entry = joinedEntity.entry ?: return
+
+                val entity = ContentEntryWithBlockAndLanguage().apply {
+                    contentEntryUid = entry.contentEntryUid
+                    title = entry.title
+                    description = entry.description
+                    author = entry.author
+                    publisher = entry.publisher
+                    licenseType = entry.licenseType
+                    licenseName = entry.licenseName
+                    licenseUrl = entry.licenseUrl
+                    sourceUrl = entry.sourceUrl
+                    lastModified = entry.lastModified
+                    primaryLanguageUid = entry.primaryLanguageUid
+                    languageVariantUid = entry.languageVariantUid
+                    contentFlags = entry.contentFlags
+                    leaf = entry.leaf
+                    publik = entry.publik
+                    ceInactive = entry.ceInactive
+                    contentTypeFlag = entry.contentTypeFlag
+                    contentOwner = entry.contentOwner
+                    contentEntryLocalChangeSeqNum = entry.contentEntryLocalChangeSeqNum
+                    contentEntryMasterChangeSeqNum = entry.contentEntryMasterChangeSeqNum
+                    contentEntryLastChangedBy = entry.contentEntryLastChangedBy
+                    contentEntryLct = entry.contentEntryLct
+
+                    block = joinedEntity
+                    language = joinedEntity.language
+                }
+
+
                 NavigateForResultOptions(
-                    this, null,
+                    this, entity,
                     ContentEntryEdit2View.VIEW_NAME,
-                    ContentEntry::class,
-                    ContentEntry.serializer(),
+                    ContentEntryWithBlockAndLanguage::class,
+                    ContentEntryWithBlockAndLanguage.serializer(),
                     SAVEDSTATE_KEY_CONTENT,
                     arguments = mutableMapOf(
                         UstadView.ARG_ENTITY_UID to joinedEntity.entry?.contentEntryUid.toString(),
-                        UstadView.ARG_LEAF to true.toString()))
+                        UstadView.ARG_LEAF to true.toString(),
+                        UstadView.ARG_CLAZZUID to joinedEntity.cbClazzUid.toString(),
+                        ContentEntryEdit2View.BLOCK_REQUIRED to true.toString()))
             }
             CourseBlock.BLOCK_MODULE_TYPE -> {
                 val args = mutableMapOf<String, String>()
@@ -679,6 +767,25 @@ class ClazzEdit2Presenter(context: Any,
                     destinationResultKey = ARG_SAVEDSTATE_TEXT,
                     arguments = args)
             }
+            CourseBlock.BLOCK_DISCUSSION_TYPE -> {
+                val args = mutableMapOf<String, String>()
+                args[UstadView.ARG_CLAZZUID] =
+                    (joinedEntity.courseDiscussion?.courseDiscussionClazzUid ?: entity?.clazzUid ?: 0L)
+                        .toString()
+                args[UstadView.ARG_ENTITY_UID] =
+                    (joinedEntity.courseDiscussion?.courseDiscussionUid?: 0L).toString()
+
+                NavigateForResultOptions(
+                    this,
+                    currentEntityValue = joinedEntity,
+                    destinationViewName = CourseDiscussionEditView.VIEW_NAME,
+                    entityClass = CourseBlockWithEntity::class,
+                    serializationStrategy = CourseBlockWithEntity.serializer(),
+                    destinationResultKey = SAVEDSTATE_KEY_DISCUSSION,
+                    arguments = args)
+
+            }
+
             else -> return
         }
 
@@ -729,45 +836,96 @@ class ClazzEdit2Presenter(context: Any,
         if(foundBlock.cbType == CourseBlock.BLOCK_MODULE_TYPE) {
             newList.forEach{
                 it.takeIf { it.cbModuleParentBlockUid == foundBlock.cbUid }
-                    ?.cbHidden = !it.cbHidden
+                    ?.cbHidden = foundBlock.cbHidden
             }
         }
         courseBlockOneToManyJoinEditHelper.liveList.sendValue(newList)
     }
 
+
+    /*
+
+    If moving a module:
+         If destinationBlock is:
+        A block with parentModule = 0, then:
+            If module being moved is going down, then it's position in the new list is (destinationBlock + 1 + destinationBlock.numChildren)
+              If module being moved is going up, then it's destination in in the new list is destubationBlock
+
+         A block is child and end of a module:
+            Then its destination in the new list is destinationBlock.index + 1 to move below it
+        else not end of module - reject it
+
+     If moving a non-module block:
+      If destinationBlock.previous is part of a module, or is itself a module,
+            then the block being moved is assigned to that module
+                and given the same indentation (minimum indent level = 1)
+            else set module to zero and indentation to zero.
+
+     */
     override fun onItemMove(fromPosition: Int, toPosition: Int): Boolean {
         val currentList = courseBlockOneToManyJoinEditHelper.liveList.getValue()?.toMutableList() ?: mutableListOf()
 
-        val fromLocation = currentList[fromPosition]
+        val movingBlock = currentList[fromPosition]
 
-        // check if its module
-        if(fromLocation.cbType == CourseBlock.BLOCK_MODULE_TYPE &&
-                fromLocation.cbModuleParentBlockUid != currentList[toPosition].cbModuleParentBlockUid){
+        val destinationBlock = currentList[toPosition]
+
+        val nextBlock = currentList.getOrNull(toPosition + 1)
+        val isChildBlock = destinationBlock.cbModuleParentBlockUid != 0L
+        val blockMovingDown = fromPosition < toPosition
+        val lastBlockInModule = destinationBlock.cbModuleParentBlockUid != nextBlock?.cbModuleParentBlockUid
+
+        // reject if moving a module, destination is a child block and not last in the block
+        if(movingBlock.cbType == CourseBlock.BLOCK_MODULE_TYPE
+            && isChildBlock && !lastBlockInModule) {
             courseBlockOneToManyJoinEditHelper.liveList.sendValue(currentList.toList())
             return false
         }
 
+        // remove the block from the list
         currentList.removeAt(fromPosition)
-        currentList.add(toPosition, fromLocation)
 
-        val movedBlock = currentList[toPosition]
-        if(movedBlock.cbType == CourseBlock.BLOCK_MODULE_TYPE){
-            //if module moves, move all children to new index
-            val childBlocks = currentList.filter { it.cbModuleParentBlockUid == movedBlock.cbUid }
+        if(movingBlock.cbType == CourseBlock.BLOCK_MODULE_TYPE){
+
+            val destinationBlockChildren = currentList.filter { it.cbModuleParentBlockUid == destinationBlock.cbUid }
+            // if destination is parent block
+            if(destinationBlock.cbModuleParentBlockUid == 0L){
+                if(blockMovingDown) {
+                    // if moving downwards, and destination has children, move below the children of destination
+                    currentList.addSafelyToPosition(toPosition + destinationBlockChildren.size, movingBlock)
+                }else{
+                    currentList.add(toPosition, movingBlock)
+                }
+            }else {
+                // else, destination is child and is last child of module, move the block below it
+                currentList.addSafelyToPosition(toPosition + 1, movingBlock)
+            }
+
+            // remove all the child and move it below the destination
+            val childBlocks = currentList.filter { it.cbModuleParentBlockUid == movingBlock.cbUid }
             currentList.removeAll(childBlocks)
-            val index = currentList.indexOf(movedBlock) + 1
+            val index = currentList.indexOf(movingBlock) + 1
             currentList.addAll(index, childBlocks)
 
-        }else if(movedBlock.cbIndentLevel != 0){
+
+        }else {
             //if child moves out of module, update child to have parentBlock = 0 or find new parent
-            movedBlock.cbModuleParentBlockUid = 0
-            for(n in toPosition downTo 0){
-                if(currentList[n].cbType == CourseBlock.BLOCK_MODULE_TYPE){
-                    movedBlock.cbModuleParentBlockUid = currentList[n].cbUid
-                    break
+            currentList.add(toPosition, movingBlock)
+            val previousBlock = currentList.getOrNull(toPosition - 1)
+            when {
+                previousBlock == null -> {
+                    movingBlock.cbModuleParentBlockUid = 0
+                    movingBlock.cbIndentLevel = 0
+                }
+                previousBlock.cbType == CourseBlock.BLOCK_MODULE_TYPE -> {
+                    movingBlock.cbModuleParentBlockUid = previousBlock.cbUid
+                    movingBlock.cbIndentLevel = 1
+                }
+                else -> {
+                    movingBlock.cbModuleParentBlockUid = previousBlock.cbModuleParentBlockUid
+                    movingBlock.cbIndentLevel = previousBlock.cbIndentLevel
                 }
             }
-            currentList[toPosition] = movedBlock
+            currentList[toPosition] = movingBlock
         }
         
         // finally update the list with new index values
@@ -781,6 +939,34 @@ class ClazzEdit2Presenter(context: Any,
     }
 
     override fun onItemDismiss(position: Int) {
+
+    }
+
+    companion object {
+
+        const val ARG_SAVEDSTATE_SCHEDULES = "schedules"
+
+        const val ARG_SAVEDSTATE_BLOCK = "courseBlocks"
+
+        const val ARG_SAVEDSTATE_MODULE = "courseModule"
+
+        const val ARG_SAVEDSTATE_TEXT = "courseText"
+
+        const val SAVEDSTATE_KEY_SCHOOL = "School"
+
+        const val SAVEDSTATE_KEY_ASSIGNMENT = "Assignment"
+
+        const val SAVEDSTATE_KEY_CONTENT = "courseContent"
+
+        const val SAVEDSTATE_KEY_HOLIDAYCALENDAR = "ClazzHolidayCalendar"
+
+        const val SAVEDSTATE_KEY_FEATURES = "ClazzFeatures"
+
+        const val SAVEDSTATE_KEY_TERMINOLOGY ="ClazzTerminology"
+
+        const val SAVEDSTATE_KEY_DISCUSSION = "CourseDiscussion"
+
+        const val SAVEDSTATE_KEY_COURSEPICTURE = "CoursePicture"
 
     }
 

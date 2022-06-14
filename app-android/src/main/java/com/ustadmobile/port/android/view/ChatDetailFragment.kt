@@ -60,15 +60,21 @@ class ChatDetailFragment: UstadBaseFragment(), ChatDetailView, ChatDetailFragmen
         inflater: LayoutInflater,
         container: ViewGroup?,
         savedInstanceState: Bundle?)
-    : View? {
+    : View {
         val rootView: View
 
         dbRepo = on(accountManager.activeAccount).direct.instance(tag = UmAppDatabase.TAG_REPO)
 
-        messagesRecyclerAdapter = MessagesRecyclerAdapter(accountManager.activeAccount.personUid)
+        mPresenter = ChatDetailPresenter(
+            requireContext(), arguments.toStringMap(), this,
+            di
+        )
 
-        val stackedLayoutManager: LinearLayoutManager = LinearLayoutManager(requireContext())
-        //stackedLayoutManager.stackFromEnd = true
+
+        messagesRecyclerAdapter = MessagesRecyclerAdapter(accountManager.activeAccount.personUid,
+            mPresenter?.ps, mPresenter, di, requireContext())
+
+        val stackedLayoutManager = LinearLayoutManager(requireContext())
         stackedLayoutManager.reverseLayout = true
 
         mBinding = FragmentChatDetailBinding.inflate(inflater, container, false).also {
@@ -81,12 +87,7 @@ class ChatDetailFragment: UstadBaseFragment(), ChatDetailView, ChatDetailFragmen
             }
             it.fragmentChatDetailMessageEt.movementMethod = LinkMovementMethod.getInstance()
         }
-
-        mPresenter = ChatDetailPresenter(requireContext(), arguments.toStringMap(), this,
-                di, viewLifecycleOwner)
-
-        messagesRecyclerAdapter?.presenter = mPresenter
-
+        
         return rootView
     }
 
@@ -138,16 +139,11 @@ class ChatDetailFragment: UstadBaseFragment(), ChatDetailView, ChatDetailFragmen
         set(value) {}
 
     override var entity: Chat? = null
-        get() = field
         set(value) {
             field = value
             ustadFragmentTitle = value?.chatTitle
             mBinding?.chat = value
         }
-
-    companion object {
-
-    }
 
     override fun addComment(text: String) {
         mBinding?.fragmentChatDetailMessageEt?.text?.clear()

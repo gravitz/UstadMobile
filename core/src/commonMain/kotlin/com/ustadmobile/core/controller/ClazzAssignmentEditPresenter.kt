@@ -1,17 +1,14 @@
 package com.ustadmobile.core.controller
 
 import com.soywiz.klock.DateTime
-import com.ustadmobile.core.db.UmAppDatabase
 import com.ustadmobile.core.generated.locale.MessageID
 import com.ustadmobile.core.impl.NavigateForResultOptions
 import com.ustadmobile.core.schedule.localMidnight
 import com.ustadmobile.core.schedule.toLocalMidnight
 import com.ustadmobile.core.schedule.toOffsetByTimezone
+import com.ustadmobile.core.util.IdOption
 import com.ustadmobile.core.util.MessageIdOption
-import com.ustadmobile.core.util.UmPlatformUtil
-import com.ustadmobile.core.util.ext.effectiveTimeZone
-import com.ustadmobile.core.util.ext.fallbackIndividualSet
-import com.ustadmobile.core.util.ext.putEntityAsJson
+import com.ustadmobile.core.util.ext.*
 import com.ustadmobile.core.util.safeParse
 import com.ustadmobile.core.util.safeStringify
 import com.ustadmobile.core.view.ClazzAssignmentEditView
@@ -20,47 +17,53 @@ import com.ustadmobile.core.view.UstadEditView.Companion.ARG_ENTITY_JSON
 import com.ustadmobile.core.view.UstadView.Companion.ARG_CLAZZUID
 import com.ustadmobile.core.view.UstadView.Companion.ARG_ENTITY_UID
 import com.ustadmobile.door.DoorLifecycleOwner
+import com.ustadmobile.door.doorMainDispatcher
 import com.ustadmobile.door.ext.doorPrimaryKeyManager
 import com.ustadmobile.door.ext.onRepoWithFallbackToDb
+import com.ustadmobile.door.getFirstValue
 import com.ustadmobile.lib.db.entities.*
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.launch
 import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.json.Json
 import org.kodein.di.DI
+import org.kodein.di.instance
 
 
 class ClazzAssignmentEditPresenter(context: Any,
                                    arguments: Map<String, String>, view: ClazzAssignmentEditView,
                                    lifecycleOwner: DoorLifecycleOwner,
                                    di: DI)
-    : UstadEditPresenter<ClazzAssignmentEditView, ClazzAssignmentWithCourseBlock>(context, arguments, view, di, lifecycleOwner) {
+    : UstadEditPresenter<ClazzAssignmentEditView, CourseBlockWithEntity>(context, arguments, view, di, lifecycleOwner) {
+
+    private val onLoadJsonComplete = CompletableDeferred<Boolean>()
+
+    private val json: Json by instance()
 
     enum class TextLimitTypeOptions(val optionVal: Int, val messageId: Int){
         WORDS(ClazzAssignment.TEXT_WORD_LIMIT, MessageID.words),
         CHARS(ClazzAssignment.TEXT_CHAR_LIMIT, MessageID.characters)
     }
-    class TextLimitTypeOptionsMessageIdOption(day: TextLimitTypeOptions, context: Any)
-        : MessageIdOption(day.messageId, context, day.optionVal)
+    class TextLimitTypeOptionsMessageIdOption(day: TextLimitTypeOptions, context: Any, di: DI)
+        : MessageIdOption(day.messageId, context, day.optionVal, di = di)
 
     enum class CompletionCriteriaOptions(val optionVal: Int, val messageId: Int){
         SUBMITTED(ClazzAssignment.COMPLETION_CRITERIA_SUBMIT, MessageID.submitted_cap),
         GRADED(ClazzAssignment.COMPLETION_CRITERIA_GRADED, MessageID.graded)
     }
-    class CompletionCriteriaOptionsMessageIdOption(day: CompletionCriteriaOptions, context: Any)
-        : MessageIdOption(day.messageId, context, day.optionVal)
+    class CompletionCriteriaOptionsMessageIdOption(day: CompletionCriteriaOptions, context: Any, di: DI)
+        : MessageIdOption(day.messageId, context, day.optionVal, di = di)
 
 
-    enum class EditAfterSubmissionOptions(val optionVal: Int, val messageId: Int) {
-        ALLOWED_DEADLINE(ClazzAssignment.EDIT_AFTER_SUBMISSION_TYPE_ALLOWED_DEADLINE,
-                MessageID.allowed_till_deadline),
-        ALLOWED_GRACE(ClazzAssignment.EDIT_AFTER_SUBMISSION_TYPE_ALLOWED_GRACE,
-                MessageID.allowed_till_grace),
-        NOT_ALLOWED(ClazzAssignment.EDIT_AFTER_SUBMISSION_TYPE_NOT_ALLOWED,
-                MessageID.not_allowed)
+    enum class SubmissionPolicyOptions(val optionVal: Int, val messageId: Int) {
+        SUBMIT_ALL_AT_ONCE(ClazzAssignment.SUBMISSION_POLICY_SUBMIT_ALL_AT_ONCE,
+                MessageID.submit_all_at_once_submission_policy),
+        MULTIPLE_SUBMISSIONS(ClazzAssignment.SUBMISSION_POLICY_MULTIPLE_ALLOWED,
+                MessageID.multiple_submission_allowed_submission_policy),
     }
 
-    class  EditAfterSubmissionOptionsMessageIdOption(day: EditAfterSubmissionOptions, context: Any)
-        : MessageIdOption(day.messageId, context, day.optionVal)
-
+    class  SubmissionPolicyOptionsMessageIdOption(day: SubmissionPolicyOptions, context: Any, di: DI)
+        : MessageIdOption(day.messageId, context, day.optionVal, di = di)
 
     enum class FileTypeOptions(val optionVal: Int, val messageId: Int) {
         ANY(ClazzAssignment.FILE_TYPE_ANY,
@@ -75,31 +78,21 @@ class ClazzAssignmentEditPresenter(context: Any,
                 MessageID.audio)
     }
 
-    class  FileTypeOptionsMessageIdOption(day: FileTypeOptions, context: Any)
-        : MessageIdOption(day.messageId, context, day.optionVal)
-
-
-    enum class MarkingTypeOptions(val optionVal: Int, val messageId: Int){
-        TEACHER(ClazzAssignment.MARKED_BY_COURSE_LEADER, MessageID.course_leader),
-        PEERS(ClazzAssignment.MARKED_BY_PEERS, MessageID.peers)
-    }
-    class MarkingTypeOptionsMessageIdOption(day: MarkingTypeOptions, context: Any)
-        : MessageIdOption(day.messageId, context, day.optionVal)
-
+    class  FileTypeOptionsMessageIdOption(day: FileTypeOptions, context: Any, di: DI)
+        : MessageIdOption(day.messageId, context, day.optionVal, di = di)
 
     private var clazzUid: Long = 0L
 
     override val persistenceMode: PersistenceMode
-        get() = PersistenceMode.DB
+        get() = PersistenceMode.JSON
 
 
     override fun onCreate(savedState: Map<String, String>?) {
         super.onCreate(savedState)
-        view.markingTypeOptions = MarkingTypeOptions.values().map { MarkingTypeOptionsMessageIdOption(it, context) }
-        view.completionCriteriaOptions = CompletionCriteriaOptions.values().map { CompletionCriteriaOptionsMessageIdOption(it, context) }
-        view.editAfterSubmissionOptions = EditAfterSubmissionOptions.values().map { EditAfterSubmissionOptionsMessageIdOption(it, context) }
-        view.fileTypeOptions = FileTypeOptions.values().map { FileTypeOptionsMessageIdOption(it, context) }
-        view.textLimitTypeOptions = TextLimitTypeOptions.values().map { TextLimitTypeOptionsMessageIdOption(it, context) }
+        view.completionCriteriaOptions = CompletionCriteriaOptions.values().map { CompletionCriteriaOptionsMessageIdOption(it, context, di) }
+        view.submissionPolicyOptions = SubmissionPolicyOptions.values().map { SubmissionPolicyOptionsMessageIdOption(it, context, di) }
+        view.fileTypeOptions = FileTypeOptions.values().map { FileTypeOptionsMessageIdOption(it, context, di) }
+        view.textLimitTypeOptions = TextLimitTypeOptions.values().map { TextLimitTypeOptionsMessageIdOption(it, context, di) }
     }
 
     override fun onLoadDataComplete() {
@@ -108,83 +101,65 @@ class ClazzAssignmentEditPresenter(context: Any,
             SAVEDSTATE_KEY_SUBMISSION_TYPE,
             ListSerializer(CourseGroupSet.serializer()), CourseGroupSet::class) {
             val group = it.firstOrNull() ?: return@observeSavedStateResult
-            entity?.caGroupUid = group.cgsUid
-            view.groupSet = group
-            view.entity = entity
+            presenterScope.launch(doorMainDispatcher()) {
+                onLoadJsonComplete.await()
 
-            UmPlatformUtil.run {
+                entity?.assignment?.caGroupUid = group.cgsUid
+                view.groupSet = group
+                view.entity = entity
                 requireSavedStateHandle()[SAVEDSTATE_KEY_SUBMISSION_TYPE] = null
             }
         }
     }
 
-    override suspend fun onLoadEntityFromDb(db: UmAppDatabase): ClazzAssignmentWithCourseBlock? {
-        val entityUid = arguments[ARG_ENTITY_UID]?.toLong() ?: 0L
-        clazzUid = arguments[ARG_CLAZZUID]?.toLong() ?: throw IllegalArgumentException("clazzUid was not given")
-
-        val clazzAssignment = db.onRepoWithFallbackToDb(2000) {
-            it.clazzAssignmentDao.findByUidWithBlockAsync(entityUid)
-        } ?: ClazzAssignmentWithCourseBlock().apply {
-            caClazzUid = clazzUid
-            caUid = db.doorPrimaryKeyManager.nextIdAsync(ClazzAssignment.TABLE_ID)
-            block = CourseBlock().apply {
-                cbUid = db.doorPrimaryKeyManager.nextIdAsync(CourseBlock.TABLE_ID)
-                cbClazzUid = clazzUid
-                cbEntityUid = caUid
-                cbType = CourseBlock.BLOCK_ASSIGNMENT_TYPE
-            }
-        }
-
-        val group = db.courseGroupSetDao.findByUidAsync(clazzAssignment.caGroupUid)
-            .fallbackIndividualSet(systemImpl, context)
-        view.groupSet = group
-
-        val clazzWithSchool = db.onRepoWithFallbackToDb(2000) {
-            it.clazzDao.getClazzWithSchool(clazzAssignment.caClazzUid)
-        } ?: ClazzWithSchool()
-
-        val timeZone = clazzWithSchool.effectiveTimeZone()
-        view.timeZone = timeZone
-
-        loadEntityIntoDateTime(clazzAssignment)
-
-        return clazzAssignment
-    }
-
-
-    override fun onLoadFromJson(bundle: Map<String, String>): ClazzAssignmentWithCourseBlock {
+    override fun onLoadFromJson(bundle: Map<String, String>): CourseBlockWithEntity {
         super.onLoadFromJson(bundle)
 
         val entityJsonStr = bundle[ARG_ENTITY_JSON]
         val editEntity = if (entityJsonStr != null) {
-             safeParse(di, ClazzAssignmentWithCourseBlock.serializer(), entityJsonStr)
+             safeParse(di, CourseBlockWithEntity.serializer(), entityJsonStr)
         }else{
-            ClazzAssignmentWithCourseBlock().apply {
-                caClazzUid = arguments[ARG_CLAZZUID]?.toLong() ?: 0L
-                caUid = db.doorPrimaryKeyManager.nextId(ClazzAssignment.TABLE_ID)
-                block = CourseBlock().apply {
-                    cbUid = db.doorPrimaryKeyManager.nextId(CourseBlock.TABLE_ID)
-                    cbClazzUid = arguments[ARG_CLAZZUID]?.toLong() ?: 0L
-                    cbEntityUid = caUid
-                    cbType = CourseBlock.BLOCK_ASSIGNMENT_TYPE
+            CourseBlockWithEntity().apply {
+                cbUid = db.doorPrimaryKeyManager.nextId(CourseBlock.TABLE_ID)
+                cbClazzUid = arguments[ARG_CLAZZUID]?.toLong() ?: 0L
+                cbEntityUid =  arguments[ARG_ENTITY_UID]?.toLong() ?: db.doorPrimaryKeyManager.nextId(ClazzAssignment.TABLE_ID)
+                cbType = CourseBlock.BLOCK_ASSIGNMENT_TYPE
+                assignment = ClazzAssignment().apply {
+                    caUid = cbEntityUid
+                    caClazzUid = arguments[ARG_CLAZZUID]?.toLong() ?: 0L
                 }
             }
         }
 
         presenterScope.launch {
 
-            val group = db.courseGroupSetDao.findByUidAsync(editEntity.caGroupUid)
+            val group = db.courseGroupSetDao.findByUidAsync(editEntity.assignment?.caGroupUid ?: 0)
                 .fallbackIndividualSet(systemImpl, context)
             view.groupSet = group
 
-            clazzUid = arguments[ARG_CLAZZUID]?.toLong() ?: editEntity.caClazzUid
+            repo.courseAssignmentSubmissionDao
+                .checkNoSubmissionsMade(editEntity.assignment?.caUid ?: 0)
+                .observeWithLifecycleOwner(lifecycleOwner){
+                    view.groupSetEnabled = (it ?: true) == true
+                }
+
+            clazzUid = editEntity.assignment?.caClazzUid ?: arguments[ARG_CLAZZUID]?.toLong() ?: 0
             val clazzWithSchool = db.onRepoWithFallbackToDb(2000) {
                 it.clazzDao.getClazzWithSchool(clazzUid)
             } ?: ClazzWithSchool()
 
+            val terminologyUid = arguments[ClazzAssignmentEditView.TERMINOLOGY_ID]?.toLongOrNull() ?: clazzWithSchool.clazzTerminologyUid
+            val terminology = db.courseTerminologyDao.findByUidAsync(terminologyUid)
+            val termMap = terminology.toTermMap(json, systemImpl, context)
+
+            view.markingTypeOptions = listOf(
+                IdOption(termMap.getValue(TerminologyKeys.TEACHER_KEY), ClazzAssignment.MARKED_BY_COURSE_LEADER),
+                MessageIdOption(MessageID.peers, context, ClazzAssignment.MARKED_BY_PEERS, di))
+
             val timeZone = clazzWithSchool.effectiveTimeZone()
             view.timeZone = timeZone
             loadEntityIntoDateTime(editEntity)
+            onLoadJsonComplete.complete(true)
         }
 
         return editEntity
@@ -200,52 +175,54 @@ class ClazzAssignmentEditPresenter(context: Any,
                 entityVal)
     }
 
-    fun loadEntityIntoDateTime(entity: ClazzAssignmentWithCourseBlock){
+    fun loadEntityIntoDateTime(entity: CourseBlockWithEntity){
         val timeZone = view.timeZone ?: "UTC"
 
-        val block = entity.block ?: return
-        if(block.cbHideUntilDate != 0L){
-            val startDateTimeMidnight = DateTime(block.cbHideUntilDate)
+
+        if(entity.cbHideUntilDate != 0L){
+            val startDateTimeMidnight = DateTime(entity.cbHideUntilDate)
                     .toLocalMidnight(timeZone).unixMillisLong
             view.startDate = startDateTimeMidnight
-            view.startTime = block.cbHideUntilDate - startDateTimeMidnight
+            view.startTime = entity.cbHideUntilDate - startDateTimeMidnight
         }else{
             view.startDate = 0
         }
 
 
-        if(block.cbDeadlineDate != Long.MAX_VALUE){
-            val deadlineDateTimeMidnight = DateTime(block.cbDeadlineDate)
+        if(entity.cbDeadlineDate != Long.MAX_VALUE){
+            val deadlineDateTimeMidnight = DateTime(entity.cbDeadlineDate)
                     .toLocalMidnight(timeZone).unixMillisLong
             view.deadlineDate = deadlineDateTimeMidnight
-            view.deadlineTime = block.cbDeadlineDate - deadlineDateTimeMidnight
+            view.deadlineTime = entity.cbDeadlineDate - deadlineDateTimeMidnight
         }else{
             view.deadlineDate = Long.MAX_VALUE
         }
 
-        if(block.cbGracePeriodDate != Long.MAX_VALUE){
-            val gracePeriodDateTimeMidnight = DateTime(block.cbGracePeriodDate)
+        if(entity.cbGracePeriodDate != Long.MAX_VALUE){
+            val gracePeriodDateTimeMidnight = DateTime(entity.cbGracePeriodDate)
                     .toLocalMidnight(timeZone).unixMillisLong
             view.gracePeriodDate = gracePeriodDateTimeMidnight
-            view.gracePeriodTime = block.cbGracePeriodDate - gracePeriodDateTimeMidnight
+            view.gracePeriodTime = entity.cbGracePeriodDate - gracePeriodDateTimeMidnight
         }else{
             view.gracePeriodDate = Long.MAX_VALUE
         }
     }
 
-    fun saveDateTimeIntoEntity(entity: ClazzAssignmentWithCourseBlock){
+    fun saveDateTimeIntoEntity(entity: CourseBlockWithEntity){
         val timeZone = view.timeZone ?: "UTC"
 
-        entity.block?.cbHideUntilDate = DateTime(view.startDate).toOffsetByTimezone(timeZone)
+        if(view.startDate != 0L){
+            entity.cbHideUntilDate = DateTime(view.startDate).toOffsetByTimezone(timeZone)
                 .localMidnight.utc.unixMillisLong + view.startTime
+        }
 
         if(view.deadlineDate != Long.MAX_VALUE){
-            entity.block?.cbDeadlineDate = DateTime(view.deadlineDate).toOffsetByTimezone(timeZone)
+            entity.cbDeadlineDate = DateTime(view.deadlineDate).toOffsetByTimezone(timeZone)
                     .localMidnight.utc.unixMillisLong + view.deadlineTime
         }
 
         if(view.gracePeriodDate != Long.MAX_VALUE){
-            entity.block?.cbGracePeriodDate = DateTime(view.gracePeriodDate).toOffsetByTimezone(timeZone)
+            entity.cbGracePeriodDate = DateTime(view.gracePeriodDate).toOffsetByTimezone(timeZone)
                     .localMidnight.utc.unixMillisLong + view.gracePeriodTime
         }
     }
@@ -265,57 +242,81 @@ class ClazzAssignmentEditPresenter(context: Any,
     }
 
 
-    override fun handleClickSave(entity: ClazzAssignmentWithCourseBlock) {
+    override fun handleClickSave(entity: CourseBlockWithEntity) {
+        if(!view.fieldsEnabled)
+            //Do nothing - prevent anger clicks
+            return
+
+        view.loading = true
+        view.fieldsEnabled = false
         presenterScope.launch {
 
-            val block = entity.block ?: return@launch
             saveDateTimeIntoEntity(entity)
 
-            if (entity.caTitle.isNullOrEmpty()) {
+            var foundError = false
+            if (entity.assignment?.caTitle.isNullOrEmpty()) {
                 view.caTitleError = systemImpl.getString(MessageID.field_required_prompt, context)
+                foundError = true
             }else{
                 view.caTitleError = null
             }
 
-            if(block.cbMaxPoints == 0){
+            if(entity.cbMaxPoints == 0){
                 view.caMaxPointsError = systemImpl.getString(MessageID.field_required_prompt, context)
+                foundError = true
             }else{
                 view.caMaxPointsError = null
             }
 
-            if(entity.caTitle.isNullOrEmpty() || block.cbMaxPoints == 0){
-                return@launch
-            }
-
-
-            if (block.cbDeadlineDate <= block.cbHideUntilDate) {
+            if (entity.cbDeadlineDate <= entity.cbHideUntilDate) {
                 view.caDeadlineError = systemImpl.getString(MessageID.end_is_before_start_error, context)
-                return@launch
+                foundError = true
+            }else{
+                view.caDeadlineError = null
             }
 
-
-            if (block.cbGracePeriodDate < block.cbDeadlineDate) {
+            if (entity.cbGracePeriodDate < entity.cbDeadlineDate) {
                 view.caGracePeriodError = systemImpl.getString(MessageID.after_deadline_date_error, context)
+                foundError = true
+            }else{
+                view.caGracePeriodError = null
+            }
+
+            if(entity.assignment?.caRequireTextSubmission == false && entity.assignment?.caRequireFileSubmission == false){
+                foundError = true
+                view.showSnackBar(systemImpl.getString(MessageID.text_file_submission_error, context))
+            }
+
+            val dbGroupUid = repo.clazzAssignmentDao.getGroupUidFromAssignment(entity.assignment?.caUid?: 0L)
+
+            // groups have changed
+            if(dbGroupUid != -1L && dbGroupUid != entity.assignment?.caGroupUid){
+
+                val noSubmissionMade = repo.courseAssignmentSubmissionDao
+                    .checkNoSubmissionsMade(entity.assignment?.caUid ?: 0L).getFirstValue()
+
+                if(!noSubmissionMade){
+                    foundError = true
+                    view.showSnackBar(systemImpl.getString(MessageID.error , context))
+                }
+            }
+
+            if(foundError){
+                view.loading = false
+                view.fieldsEnabled = true
                 return@launch
             }
-            
-
-            view.loading = true
-            view.fieldsEnabled = false
 
             // if grace period is not set, set the date to equal the deadline
-            if(block.cbGracePeriodDate == Long.MAX_VALUE || view.gracePeriodTime == 0L){
-                block.cbGracePeriodDate = block.cbDeadlineDate
+            if(entity.cbGracePeriodDate == Long.MAX_VALUE){
+                entity.cbGracePeriodDate = entity.cbDeadlineDate
             }
 
-            entity.block = block
-
             finishWithResult(safeStringify(di,
-                            ListSerializer(ClazzAssignment.serializer()),
+                            ListSerializer(CourseBlockWithEntity.serializer()),
                             listOf(entity)))
 
             view.loading = false
-            view.fieldsEnabled = true
 
         }
     }

@@ -38,9 +38,6 @@ class ParentalConsentManagementComponent (mProps: UmProps): UstadEditComponent<P
     override val mEditPresenter: UstadEditPresenter<*, PersonParentJoinWithMinorPerson>?
         get() = mPresenter
 
-    override val viewNames: List<String>
-        get() = listOf(ParentalConsentManagementView.VIEW_NAME)
-
     private var relationshipLabel = FieldLabel(text = getString(MessageID.relationship))
 
     override var infoText: String? = null
@@ -143,7 +140,7 @@ class ParentalConsentManagementComponent (mProps: UmProps): UstadEditComponent<P
                                     relationshipLabel.errorText ?: "",
                                     error = relationshipLabel.error,
                                     values = relationshipFieldOptions?.map {
-                                        Pair(it.optionId.toString(), it.description)
+                                        Pair(it.optionId.toString(), it.toString())
                                     }?.toList(),
                                     onChange = {
                                         setState {

@@ -53,7 +53,6 @@ import com.ustadmobile.door.DoorUri
 import com.ustadmobile.door.ext.toFile
 import org.kodein.di.DI
 import org.kodein.di.android.closestDI
-import org.kodein.di.android.di
 import org.kodein.di.direct
 import org.kodein.di.instance
 import java.io.*
@@ -107,7 +106,7 @@ actual open class UstadMobileSystemImpl : UstadMobileSystemCommon() {
        suspend fun getFile(): String {
             val apkFile = File(context.applicationInfo.sourceDir)
             //TODO: replace this with something from appconfig.properties
-            val di: DI by di(context)
+            val di: DI by closestDI(context)
             val impl : UstadMobileSystemImpl = di.direct.instance()
 
             val baseName = impl.getAppConfigString(AppConfig.KEY_APP_BASE_NAME, "", context) + "-" +
@@ -428,7 +427,12 @@ actual open class UstadMobileSystemImpl : UstadMobileSystemCommon() {
     }
 
 
-    actual fun openFileInDefaultViewer(context: Any, doorUri: DoorUri, mimeType: String?) {
+    override fun openFileInDefaultViewer(
+        context: Any,
+        doorUri: DoorUri,
+        mimeType: String?,
+        fileName: String?,
+    ) {
         var mMimeType = mimeType
         val ctx = context as Context
         val intent = Intent(Intent.ACTION_VIEW)
@@ -481,10 +485,11 @@ actual open class UstadMobileSystemImpl : UstadMobileSystemCommon() {
     /**
      * Open the given link in a browser and/or tab depending on the platform
      */
-    actual fun openLinkInBrowser(url: String, context: Any) {
+    actual override fun openLinkInBrowser(url: String, context: Any) {
         val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
         (context as Context).startActivity(intent)
     }
+
 
 
     actual companion object {
@@ -497,16 +502,6 @@ actual open class UstadMobileSystemImpl : UstadMobileSystemCommon() {
 
         const val TAG_DIALOG_FRAGMENT = "UMDialogFrag"
 
-
-        /**
-         * Get an instance of the system implementation - relies on the platform
-         * specific factory method
-         *
-         * @return A singleton instance
-         */
-        @JvmStatic
-        @Deprecated("This old static getter should not be used! Use DI instead!")
-        actual var instance: UstadMobileSystemImpl = UstadMobileSystemImpl()
 
     }
 

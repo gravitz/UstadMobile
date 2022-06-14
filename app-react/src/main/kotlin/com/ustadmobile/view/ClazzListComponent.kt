@@ -4,6 +4,7 @@ import com.ustadmobile.core.controller.ClazzListPresenter
 import com.ustadmobile.core.controller.UstadListPresenter
 import com.ustadmobile.core.generated.locale.MessageID
 import com.ustadmobile.core.util.ext.roleToString
+import com.ustadmobile.core.util.ext.roundTo
 import com.ustadmobile.core.view.ClazzList2View
 import com.ustadmobile.core.view.PersonListView
 import com.ustadmobile.core.view.UstadView
@@ -18,12 +19,8 @@ import com.ustadmobile.util.StyleManager.gridListSecondaryItemIcons
 import com.ustadmobile.util.StyleManager.maxLines
 import com.ustadmobile.util.UmProps
 import com.ustadmobile.util.ext.format
-import com.ustadmobile.util.ext.roundTo
 import com.ustadmobile.util.ext.wordBreakLimit
-import com.ustadmobile.view.ext.statusCircleIndicator
-import com.ustadmobile.view.ext.umEntityAvatar
-import com.ustadmobile.view.ext.umGridContainer
-import com.ustadmobile.view.ext.umItem
+import com.ustadmobile.view.ext.*
 import kotlinx.css.*
 import react.RBuilder
 import react.setState
@@ -38,9 +35,6 @@ class ClazzListComponent (props: UmProps): UstadListComponent<Clazz,
 
     override val displayTypeRepo: Any?
         get() = dbRepo?.clazzDao
-
-    override val viewNames: List<String>
-        get() = listOf(ClazzList2View.VIEW_NAME)
 
     override val listPresenter: UstadListPresenter<*, in ClazzWithListDisplayDetails>?
         get() = mPresenter
@@ -61,10 +55,15 @@ class ClazzListComponent (props: UmProps): UstadListComponent<Clazz,
                 position = Position.relative
             }
 
-            umEntityAvatar(
-                className = "${StyleManager.name}-clazzItemClass",
-                listItem = true,
-                fallbackSrc = "assets/entry_placeholder.jpeg")
+            withAttachmentLocalUrlLookup(item.clazzUid,
+                ClazzDetailOverviewComponent.CLAZZ_PICTURE_LOOKUP_ADAPTER,
+            ) { attachmentSrc ->
+                umEntityAvatar(
+                    src = attachmentSrc,
+                    className = "${StyleManager.name}-clazzItemClass",
+                    listItem = true,
+                    fallbackSrc = "assets/entry_placeholder.jpeg")
+            }
 
             val memberRole = "${item.clazzActiveEnrolment?.roleToString(this,systemImpl)}"
 

@@ -86,14 +86,22 @@ abstract class CourseBlockDao : BaseDao<CourseBlock>, OneToManyJoinDao<CourseBlo
                LEFT JOIN ClazzAssignment as assignment
                ON assignment.caUid = CourseBlock.cbEntityUid
                AND CourseBlock.cbType = ${CourseBlock.BLOCK_ASSIGNMENT_TYPE}
+               LEFT JOIN CourseDiscussion as courseDiscussion
+               ON CourseDiscussion.courseDiscussionUid = CourseBlock.cbEntityUid
+               AND CourseBlock.cbType = ${CourseBlock.BLOCK_DISCUSSION_TYPE}
                LEFT JOIN ContentEntry as entry
                ON entry.contentEntryUid = CourseBlock.cbEntityUid
                AND CourseBlock.cbType = ${CourseBlock.BLOCK_CONTENT_TYPE}
+               
+               LEFT JOIN Language
+               ON Language.langUid = entry.primaryLanguageUid
+                AND CourseBlock.cbType = ${CourseBlock.BLOCK_CONTENT_TYPE}
+               
          WHERE cbClazzUid = :clazzUid
            AND cbActive
       ORDER BY cbIndex
           """)
-    abstract suspend fun findAllCourseBlockByClazzUidAsync(clazzUid: Long): List<CourseBlockWithEntity>
+    abstract suspend fun findAllCourseBlockByClazzUidAsync(clazzUid: Long): List<CourseBlockWithEntityDb>
 
     @Query("""
          WITH CtePermissionCheck (hasPermission) 
@@ -101,12 +109,15 @@ abstract class CourseBlockDao : BaseDao<CourseBlock>, OneToManyJoinDao<CourseBlo
                SELECT PrsGrpMbr.groupMemberPersonUid
                   FROM Clazz
                        ${Clazz.JOIN_FROM_CLAZZ_TO_USERSESSION_VIA_SCOPEDGRANT_PT1}
-                          ${Role.PERMISSION_ASSIGNMENT_VIEWSTUDENTPROGRESS}
+                          ${Role.PERMISSION_PERSON_LEARNINGRECORD_SELECT}
                           ${Clazz.JOIN_FROM_SCOPEDGRANT_TO_PERSONGROUPMEMBER}
                  WHERE Clazz.clazzUid = :clazzUid
-                   AND PrsGrpMbr.groupMemberPersonUid = :personUid))
+                   AND PrsGrpMbr.groupMemberPersonUid = :personUid)), 
+                   
+        $SUBMITTER_LIST_IN_CLAZZ_CTE           
+                   
 
-        SELECT CourseBlock.*, ClazzAssignment.*, ContentEntry.*, ContentEntryParentChildJoin.*, 
+        SELECT CourseBlock.*, ClazzAssignment.*, ContentEntry.*, CourseDiscussion.*, ContentEntryParentChildJoin.*, 
                Container.*, CourseAssignmentMark.*, (CourseBlock.cbUid NOT IN (:collapseList)) AS expanded,
                
                COALESCE(StatementEntity.resultScoreMax,0) AS resultMax, 
@@ -124,53 +135,52 @@ abstract class CourseBlockDao : BaseDao<CourseBlock>, OneToManyJoinDao<CourseBlo
                 0 as penalty,
                 
                 (SELECT hasPermission FROM CtePermissionCheck) AS hasMetricsPermission,
+                
+             
                  (SELECT COUNT(*) 
-                        FROM ClazzEnrolment 
-                        WHERE ClazzEnrolment.clazzEnrolmentClazzUid = ClazzAssignment.caClazzUid 
-                        AND ClazzEnrolment.clazzEnrolmentActive 
-                        AND ClazzEnrolment.clazzEnrolmentRole = ${ClazzEnrolment.ROLE_STUDENT}
-                        AND CourseBlock.cbGracePeriodDate <= ClazzEnrolment.clazzEnrolmentDateLeft) 
+                    FROM SubmitterList 
+                   WHERE SubmitterList.assignmentUid = ClazzAssignment.caUid) 
                         AS totalStudents, 
  
                0 AS notSubmittedStudents,
                
                (CASE WHEN (SELECT hasPermission 
                           FROM CtePermissionCheck)
-                     THEN (SELECT COUNT(DISTINCT CourseAssignmentSubmission.casSubmitterUid)
-                         FROM ClazzEnrolment
-                              JOIN CourseAssignmentSubmission
-                              ON ClazzEnrolment.clazzEnrolmentPersonUid = CourseAssignmentSubmission.casSubmitterUid
-                              AND ClazzAssignment.caUid = CourseAssignmentSubmission.casAssignmentUid
-                             
-                              LEFT JOIN CourseAssignmentMark
-                              ON ClazzEnrolment.clazzEnrolmentPersonUid = CourseAssignmentMark.camStudentUid
-                              AND ClazzAssignment.caUid = CourseAssignmentMark.camAssignmentUid
-                              
-                        WHERE ClazzEnrolment.clazzEnrolmentRole = ${ClazzEnrolment.ROLE_STUDENT}
-                          AND ClazzEnrolment.clazzEnrolmentActive
-                          AND CourseAssignmentMark.camUid IS NULL
-                          AND ClazzAssignment.caClazzUid = ClazzEnrolment.clazzEnrolmentClazzUid
-                          AND CourseBlock.cbGracePeriodDate <= ClazzEnrolment.clazzEnrolmentDateLeft) 
-                ELSE 0 END) AS submittedStudents,         
+                     THEN (SELECT COUNT(DISTINCT CourseAssignmentSubmission.casSubmitterUid) 
+                             FROM CourseAssignmentSubmission
+                                   LEFT JOIN CourseAssignmentMark
+                                   ON CourseAssignmentSubmission.casSubmitterUid = CourseAssignmentMark.camSubmitterUid
+                                   AND CourseAssignmentMark.camAssignmentUid = CourseAssignmentSubmission.casAssignmentUid
+                            WHERE CourseAssignmentMark.camUid IS NULL
+                              AND CourseAssignmentSubmission.casAssignmentUid = ClazzAssignment.caUid
+                              AND CourseAssignmentSubmission.casSubmitterUid IN 
+                                                    (SELECT submitterId 
+                                                      FROM SubmitterList
+                                                     WHERE SubmitterList.assignmentUid = ClazzAssignment.caUid))  
+                      ELSE 0 END) AS submittedStudents,         
                
                 (CASE WHEN (SELECT hasPermission 
-                           FROM CtePermissionCheck)
-                   THEN (SELECT COUNT(DISTINCT(CourseAssignmentMark.camStudentUid)) 
-                           FROM CourseAssignmentMark 
-                                JOIN ClazzEnrolment
-                                ON ClazzEnrolment.clazzEnrolmentPersonUid = CourseAssignmentMark.camStudentUid
-                                
-                          WHERE CourseAssignmentMark.camAssignmentUid = ClazzAssignment.caUid
-                            AND ClazzEnrolment.clazzEnrolmentActive
-                            AND ClazzEnrolment.clazzEnrolmentRole = ${ClazzEnrolment.ROLE_STUDENT}
-                            AND ClazzEnrolment.clazzEnrolmentClazzUid = ClazzAssignment.caClazzUid
-                            AND CourseBlock.cbGracePeriodDate <= ClazzEnrolment.clazzEnrolmentDateLeft)
+                           FROM CtePermissionCheck)       
+                   THEN (SELECT COUNT(DISTINCT CourseAssignmentMark.camSubmitterUid) 
+                           FROM CourseAssignmentMark
+                            
+                             JOIN CourseAssignmentSubmission
+                             ON CourseAssignmentSubmission.casSubmitterUid = CourseAssignmentMark.camSubmitterUid
+                             AND CourseAssignmentSubmission.casAssignmentUid = CourseAssignmentMark.camAssignmentUid
+                             
+                          WHERE CourseAssignmentMark.camAssignmentUid = ClazzAssignment.caUid 
+                            AND CourseAssignmentMark.camSubmitterUid IN (SELECT submitterId 
+                                                                            FROM SubmitterList
+                                                                           WHERE SubmitterList.assignmentUid = ClazzAssignment.caUid))
                    ELSE 0 END) AS markedStudents,
                    
-                   (CASE WHEN CourseAssignmentMark.camAssignmentUid IS NOT NULL 
-                             THEN ${CourseAssignmentSubmission.MARKED}
-                             ELSE ${CourseAssignmentSubmission.SUBMITTED} 
-                             END) AS fileSubmissionStatus
+                   COALESCE((CASE WHEN CourseAssignmentMark.camUid IS NOT NULL 
+                          THEN ${CourseAssignmentSubmission.MARKED} 
+                          WHEN CourseAssignmentSubmission.casUid IS NOT NULL 
+                          THEN ${CourseAssignmentSubmission.SUBMITTED} 
+                          ELSE ${CourseAssignmentSubmission.NOT_SUBMITTED} END), 
+                               ${CourseAssignmentSubmission.NOT_SUBMITTED}) AS fileSubmissionStatus
+                
                 
           FROM CourseBlock 
           
@@ -186,6 +196,10 @@ abstract class CourseBlockDao : BaseDao<CourseBlock>, OneToManyJoinDao<CourseBlo
                ON ContentEntry.contentEntryUid = CourseBlock.cbEntityUid
                AND NOT ceInactive
                AND CourseBlock.cbType = ${CourseBlock.BLOCK_CONTENT_TYPE}
+               
+               LEFT JOIN CourseDiscussion 
+                      ON CourseDiscussion.courseDiscussionUid = CourseBlock.cbEntityUid
+                     AND CourseBlock.cbType = ${CourseBlock.BLOCK_DISCUSSION_TYPE}
                
                LEFT JOIN ContentEntryParentChildJoin 
                ON ContentEntryParentChildJoin.cepcjChildContentEntryUid = ContentEntry.contentEntryUid
@@ -207,14 +221,43 @@ abstract class CourseBlockDao : BaseDao<CourseBlock>, OneToManyJoinDao<CourseBlo
                                ORDER BY resultScoreScaled DESC, 
                                         extensionProgress DESC, 
                                         resultSuccess DESC 
-                                  LIMIT 1)         
+                                  LIMIT 1) 
+                                  
+               LEFT JOIN CourseAssignmentSubmission
+                ON casUid = (SELECT casUid 
+                                     FROM CourseAssignmentSubmission
+                                    WHERE casAssignmentUid = ClazzAssignment.caUid
+                                      AND casSubmitterUid = (SELECT (CASE WHEN ref.caGroupUid = 0 
+                                                                          THEN :personUid 
+                                                                          WHEN CourseGroupMember.cgmUid IS NULL 
+                                                                          THEN 0 
+                                                                          ELSE CourseGroupMember.cgmGroupNumber 
+                                                                          END) as submitterUid
+                                                               FROM ClazzAssignment AS ref
+                                                                    LEFT JOIN CourseGroupMember
+                                                                     ON cgmSetUid = ClazzAssignment.caGroupUid
+                                                                     AND cgmPersonUid = :personUid
+                                                              WHERE ref.caUid = ClazzAssignment.caUid)
+                                 ORDER BY casTimestamp DESC
+                                    LIMIT 1)
+                                          
                LEFT JOIN CourseAssignmentMark
                       ON camUid = (SELECT camUid 
                                      FROM CourseAssignmentMark
                                     WHERE camAssignmentUid = ClazzAssignment.caUid
-                                      AND camStudentUid = :personUid
+                                      AND camSubmitterUid = (SELECT (CASE WHEN ref.caGroupUid = 0 
+                                                                          THEN :personUid 
+                                                                          WHEN CourseGroupMember.cgmUid IS NULL 
+                                                                          THEN 0 
+                                                                          ELSE CourseGroupMember.cgmGroupNumber 
+                                                                          END) as submitterUid
+                                                               FROM ClazzAssignment AS ref
+                                                                    LEFT JOIN CourseGroupMember
+                                                                     ON cgmSetUid = ClazzAssignment.caGroupUid
+                                                                     AND cgmPersonUid = :personUid
+                                                              WHERE ref.caUid = ClazzAssignment.caUid)
                                  ORDER BY camLct DESC
-                                    LIMIT 1)
+                                    LIMIT 1)       
          WHERE CourseBlock.cbClazzUid = :clazzUid
            AND CourseBlock.cbActive
            AND NOT CourseBlock.cbHidden
@@ -223,10 +266,11 @@ abstract class CourseBlockDao : BaseDao<CourseBlock>, OneToManyJoinDao<CourseBlo
            AND CourseBlock.cbModuleParentBlockUid NOT IN (:collapseList)
       ORDER BY CourseBlock.cbIndex
     """)
-    @QueryLiveTables(value = ["CourseBlock", "ClazzAssignment",
+    @QueryLiveTables(value = ["CourseBlock", "ClazzAssignment", "CourseDiscussion",
         "ContentEntry", "CourseAssignmentMark","StatementEntity",
         "Container","ContentEntryParentChildJoin","PersonGroupMember",
-        "Clazz","ScopedGrant","ClazzEnrolment","CourseAssignmentSubmission"])
+        "Clazz","ScopedGrant","ClazzEnrolment","CourseAssignmentSubmission",
+        "CourseGroupMember"])
     abstract fun findAllCourseBlockByClazzUidLive(clazzUid: Long,
                                                   personUid: Long,
                                                   collapseList: List<Long>,
@@ -239,12 +283,53 @@ abstract class CourseBlockDao : BaseDao<CourseBlock>, OneToManyJoinDao<CourseBlo
            SET cbActive = :active, 
                cbLct = :changeTime
          WHERE cbUid = :cbUid""")
-    abstract fun updateActiveByUid(cbUid: Long, active: Boolean,  changeTime: Long)
+    abstract suspend fun updateActiveByUid(cbUid: Long, active: Boolean,  changeTime: Long)
 
     override suspend fun deactivateByUids(uidList: List<Long>, changeTime: Long) {
         uidList.forEach {
             updateActiveByUid(it, false, changeTime)
         }
+    }
+
+    companion object {
+
+        const val SUBMITTER_LIST_IN_CLAZZ_CTE = """
+            SubmitterList (submitterId, assignmentUid)
+            AS (SELECT DISTINCT ClazzEnrolment.clazzEnrolmentPersonUid AS submitterId,
+                       ClazzAssignment.caUid AS assignmentUid
+                  
+                  FROM ClazzEnrolment
+                  
+                       JOIN Person 
+                       ON Person.personUid = ClazzEnrolment.clazzEnrolmentPersonUid
+                        
+                       JOIN ClazzAssignment
+                       ON ClazzAssignment.caClazzUid = :clazzUid
+
+                       JOIN CourseBlock
+                       ON CourseBlock.cbEntityUid = ClazzAssignment.caUid
+                       AND CourseBlock.cbType = ${CourseBlock.BLOCK_ASSIGNMENT_TYPE}
+                       
+                 WHERE ClazzAssignment.caGroupUid = 0
+                   AND clazzEnrolmentClazzUid = :clazzUid
+                   AND clazzEnrolmentActive
+                   AND clazzEnrolmentRole = ${ClazzEnrolment.ROLE_STUDENT}
+                   AND CourseBlock.cbGracePeriodDate <= ClazzEnrolment.clazzEnrolmentDateLeft
+                   AND ClazzEnrolment.clazzEnrolmentDateJoined <= CourseBlock.cbGracePeriodDate
+              GROUP BY submitterId, assignmentUid
+            UNION                 
+             SELECT DISTINCT CourseGroupMember.cgmGroupNumber AS submitterId,
+                    ClazzAssignment.caUid AS assignmentUid
+               FROM CourseGroupMember
+                    JOIN ClazzAssignment
+                    ON ClazzAssignment.caClazzUid = :clazzUid
+              WHERE CourseGroupMember.cgmSetUid = ClazzAssignment.caGroupUid
+                AND ClazzAssignment.caGroupUid != 0
+                AND CourseGroupMember.cgmGroupNumber != 0
+           GROUP BY submitterId, assignmentUid
+            )
+        """
+
     }
 
 }

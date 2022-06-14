@@ -1,6 +1,7 @@
 package com.ustadmobile.view
 
 import com.ustadmobile.core.generated.locale.MessageID
+import com.ustadmobile.core.util.UstadUrlComponents
 import com.ustadmobile.core.view.AccountListView
 import com.ustadmobile.core.view.ReportListView
 import com.ustadmobile.core.view.SettingsView
@@ -54,8 +55,6 @@ class MainComponent(props: UmProps): UstadBaseComponent<UmProps, UmState>(props)
 
     private var activeAccount: UmAccount? = null
 
-    override var viewNames: List<String>? = null
-
     private var appState: ReduxAppState = ReduxAppState()
 
     private lateinit var currentDestination: UstadDestination
@@ -84,7 +83,14 @@ class MainComponent(props: UmProps): UstadBaseComponent<UmProps, UmState>(props)
      * i.e Side Nav, Bottom nav e.tc
      */
     private fun onDestinationChanged() {
-        val destination = lookupDestinationName(getViewNameFromUrl()) ?: defaultDestination
+        var viewName: String? = null
+        try {
+            viewName = UstadUrlComponents.parse(window.location.href).viewName
+        }catch(e: Exception) {
+            //not an UstadUrl (yet)
+        }
+
+        val destination = lookupDestinationName(viewName) ?: defaultDestination
         destination.takeIf { it.labelId != 0 && it.labelId != MessageID.content}?.apply {
             ustadComponentTitle = getString(labelId)
         }
@@ -124,11 +130,6 @@ class MainComponent(props: UmProps): UstadBaseComponent<UmProps, UmState>(props)
                                 if(systemImpl.isRtlActive()) "" else "...",
                         activeAccount?.firstName){
                         systemImpl.go(AccountListView.VIEW_NAME, mapOf(), this)
-                        /*
-                        Db export for debugging purpose
-                        GlobalScope.launch {
-                            database?.exportDatabase()
-                        }*/
                     }
 
                     if(currentDestination.showNavigation){
@@ -141,7 +142,7 @@ class MainComponent(props: UmProps): UstadBaseComponent<UmProps, UmState>(props)
                         appBarSpacer()
                         styledDiv {
                             attrs.asDynamic().id = "main-content"
-                            renderRoutes(systemImpl)
+                            renderRoutes(di)
                         }
                     }
 

@@ -122,10 +122,12 @@ abstract class StatementDao : BaseDao<StatementEntity> {
     abstract fun getXLangMap(): XLangMapEntry?
 
 
-    @Query("""UPDATE StatementEntity SET extensionProgress = :progress,
-            statementLastChangedBy = ${SyncNode.SELECT_LOCAL_NODE_ID_SQL} 
+    @Query("""
+        UPDATE StatementEntity 
+           SET extensionProgress = :progress,
+               statementLct = :updateTime 
             WHERE statementUid = :uid""")
-    abstract fun updateProgress(uid: Long, progress: Int)
+    abstract fun updateProgress(uid: Long, progress: Int, updateTime: Long)
 
 
     @Query("""
@@ -272,13 +274,19 @@ abstract class StatementDao : BaseDao<StatementEntity> {
           FROM StatementEntity
          WHERE statementPersonUid = :studentUid
            AND statementVerbUid = ${VerbEntity.VERB_SUBMITTED_UID}
-           AND xObjectUid = (SELECT xObjectUid 
-                               FROM XObjectEntity 
-                              WHERE objectId = :assignmentId 
-                              LIMIT 1)           
+           AND xObjectUid = :assignmentObjectUid    
       ORDER BY timestamp                
     """)
-    abstract suspend fun findSubmittedStatementFromStudent(studentUid: Long, assignmentId: String): StatementEntity?
+    abstract suspend fun findSubmittedStatementFromStudent(studentUid: Long, assignmentObjectUid: Long): StatementEntity?
+
+    @Query("""
+        SELECT * 
+          FROM StatementEntity
+         WHERE statementPersonUid = :studentUid
+           AND statementVerbUid = ${VerbEntity.VERB_SCORED_UID}
+      ORDER BY timestamp                
+    """)
+    abstract fun findScoreStatementForStudent(studentUid: Long): StatementEntity?
 
 
     @Query("""

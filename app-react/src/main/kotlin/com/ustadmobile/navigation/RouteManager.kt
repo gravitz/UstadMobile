@@ -3,6 +3,7 @@ package com.ustadmobile.navigation
 import com.ustadmobile.core.generated.locale.MessageID
 import com.ustadmobile.core.view.*
 import com.ustadmobile.view.*
+import kotlin.reflect.KClass
 
 /**
  * Manages all route functionalities like defining the routes and find destinations
@@ -17,7 +18,7 @@ object RouteManager {
              component = ContentEntryListComponent::class,  showSearch = true),
         UstadDestination(view = SchoolListView.VIEW_NAME,  component = SchoolListComponent::class),
         UstadDestination("person", MessageID.people, PersonListView.VIEW_NAME, PersonListComponent::class, showSearch = true),
-        UstadDestination("message", MessageID.messages, ChatListView.VIEW_NAME, ChatListComponent::class),
+        UstadDestination("message", MessageID.messages, ChatListView.VIEW_NAME, ChatListComponent::class,  showSearch = true),
         UstadDestination("pie_chart", MessageID.reports, ReportListView.VIEW_NAME, ReportListComponent::class, divider = true),
         UstadDestination("settings", MessageID.settings, SettingsView.VIEW_NAME, SettingsComponent::class),
         UstadDestination(view = AccountListView.VIEW_NAME, component = AccountListComponent::class),
@@ -80,6 +81,7 @@ object RouteManager {
         UstadDestination(view = ClazzAssignmentDetailStudentProgressView.VIEW_NAME, component = ClazzAssignmentDetailStudentProgressComponent::class),
         UstadDestination(view = SessionListView.VIEW_NAME, component = SessionListComponent::class, showSearch = true),
         UstadDestination(view = TextAssignmentEditView.VIEW_NAME, component = TextAssignmentEditComponent::class),
+        UstadDestination(view = HtmlTextViewDetailView.VIEW_NAME, component = HtmlTextViewComponent::class),
         UstadDestination(view = SelectFileView.VIEW_NAME, component = SelectFileComponent::class),
         UstadDestination(view = StatementListView.VIEW_NAME, component = StatementListComponent::class),
         UstadDestination(view = ReportTemplateListView.VIEW_NAME, component = ReportTemplateListComponent::class),
@@ -91,8 +93,23 @@ object RouteManager {
         UstadDestination(view = CourseGroupSetEditView.VIEW_NAME, component = CourseGroupSetEditComponent::class),
         UstadDestination(view = CourseGroupSetDetailView.VIEW_NAME, component = CourseGroupSetDetailComponent::class),
         UstadDestination(view = ChatDetailView.VIEW_NAME, component = ChatDetailComponent::class),
-        UstadDestination(view = ReportDetailView.VIEW_NAME, component = ReportDetailComponent::class)
+        UstadDestination(view = ReportDetailView.VIEW_NAME, component = ReportDetailComponent::class),
+        UstadDestination(view = CourseDiscussionEditView.VIEW_NAME, component = CourseDiscussionEditComponent::class),
+        UstadDestination(view = DiscussionTopicEditView.VIEW_NAME, component = DiscussionTopicEditComponent::class),
+        UstadDestination(view = CourseDiscussionDetailView.VIEW_NAME, component = CourseDiscussionDetailComponent::class),
+        UstadDestination(view = DiscussionTopicDetailView.VIEW_NAME, component = DiscussionTopicDetailComponent::class),
+        UstadDestination(view = DiscussionPostEditView.VIEW_NAME, component = DiscussionPostEditComponent::class),
+        UstadDestination(view = DiscussionPostDetailView.VIEW_NAME, component = DiscussionPostDetailComponent::class),
+        UstadDestination(view = SelectExtractFileView.VIEW_NAME, component = SelectExtractFileComponent::class),
     )
+
+    private val componentClassToViewNamesMap: Map<KClass<*>, List<String>> by lazy {
+        destinationList.groupBy {
+            it.component
+        }.entries.associate { entry ->
+            entry.key to entry.value.map { it.view }
+        }
+    }
 
     /**
      * Default destination to navigate to when destination is not specified
@@ -119,4 +136,12 @@ object RouteManager {
             it.view == view
         }
     }
+
+    /**
+     * Get a list of the viewnames that belong to any given component class.
+     */
+    fun lookupViewNamesByComponent(componentClass: KClass<*>) : List<String>? {
+        return componentClassToViewNamesMap[componentClass]
+    }
+
 }

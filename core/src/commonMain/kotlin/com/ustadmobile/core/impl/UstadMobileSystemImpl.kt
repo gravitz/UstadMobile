@@ -126,26 +126,13 @@ expect open class UstadMobileSystemImpl: UstadMobileSystemCommon {
      */
     override fun getAppConfigString(key: String, defaultVal: String?, context: Any): String?
 
-
-    fun openFileInDefaultViewer(context: Any, doorUri: DoorUri, mimeType: String?)
-
-
     /**
      * Open the given link in a browser and/or tab depending on the platform
      */
-    fun openLinkInBrowser(url: String, context: Any)
+    override fun openLinkInBrowser(url: String, context: Any)
 
 
     companion object {
 
-        /**
-         * Get an instance of the system implementation - relies on the platform
-         * specific factory method
-         *
-         * @return A singleton instance
-         */
-        @JvmStatic
-        @Deprecated("This static property should not be used! We should access it through DI")
-        var instance: UstadMobileSystemImpl
     }
 }

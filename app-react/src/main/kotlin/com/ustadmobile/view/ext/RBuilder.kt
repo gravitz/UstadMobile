@@ -1,6 +1,7 @@
 package com.ustadmobile.view.ext
 
 
+import com.ustadmobile.core.account.UstadAccountManager
 import com.ustadmobile.core.account.UstadAccountManager.Companion.ACCOUNTS_ACTIVE_SESSION_PREFKEY
 import com.ustadmobile.core.contentformats.xapi.Statement
 import com.ustadmobile.core.controller.BitmaskEditPresenter
@@ -8,14 +9,15 @@ import com.ustadmobile.core.controller.SubmissionConstants.STATUS_MAP
 import com.ustadmobile.core.generated.locale.MessageID
 import com.ustadmobile.core.impl.UstadMobileSystemImpl
 import com.ustadmobile.core.util.IdOption
-import com.ustadmobile.core.util.UmPlatformUtil
+import com.ustadmobile.core.util.UstadUrlComponents
+import com.ustadmobile.core.util.encodeURI
+import com.ustadmobile.core.util.encodeURIComponent
 import com.ustadmobile.core.util.ext.ChartData
 import com.ustadmobile.core.util.ext.calculateScoreWithPenalty
 import com.ustadmobile.core.util.ext.isContentComplete
-import com.ustadmobile.core.view.Login2View
-import com.ustadmobile.core.view.PersonEditView
-import com.ustadmobile.core.view.RegisterAgeRedirectView
-import com.ustadmobile.core.view.SiteTermsDetailView
+import com.ustadmobile.core.util.ext.roundTo
+import com.ustadmobile.core.view.*
+import com.ustadmobile.door.util.systemTimeInMillis
 import com.ustadmobile.lib.db.entities.*
 import com.ustadmobile.mui.components.*
 import com.ustadmobile.mui.ext.toolbarJsCssToPartialCss
@@ -52,12 +54,18 @@ import com.ustadmobile.util.Util.ASSET_ACCOUNT
 import com.ustadmobile.util.Util.stopEventPropagation
 import com.ustadmobile.util.ext.*
 import com.ustadmobile.view.*
+import com.ustadmobile.view.ClazzAssignmentDetailOverviewComponent.Companion.ASSIGNMENT_STATUS_MAP
 import com.ustadmobile.view.ClazzEditComponent.Companion.BLOCK_ICON_MAP
+import com.ustadmobile.view.components.AttachmentImageLookupAdapter
+import com.ustadmobile.view.components.AttachmentImageLookupComponent
+import io.github.aakira.napier.Napier
 import kotlinx.browser.window
 import kotlinx.css.*
 import kotlinx.html.js.onClickFunction
 import mui.material.GridProps
 import mui.material.GridWrap
+import org.kodein.di.DI
+import org.kodein.di.instance
 import org.w3c.dom.HTMLImageElement
 import org.w3c.dom.events.Event
 import react.*
@@ -90,37 +98,72 @@ fun RBuilder.errorFallBack(text: String) {
     }
 }
 
+//
+// Yeah a global variable like this is not really a good thing... but it might be needed until
+// we update architecture to MVVM. This prevents multiple redirects being made if render is called
+// multiple times until the next screen (and new context) starts
+//
+private var routeGuardRedirected = false
+
 /**
- * Prevent unauthorized access
+ * Prevent users who have not logged in accessing screens that require an account for access. The
+ * redirect will be done by actually reloading the page and redirecting to the login screen, with
+ * ARG_NEXT set.
  */
 private fun guardRoute(
     component: KClass<out Component<UmProps, *>>,
-    systemImpl: UstadMobileSystemImpl
+    accountManager: UstadAccountManager,
+    systemImpl: UstadMobileSystemImpl,
 ): ReactElement?  = createElement {
-    val viewName = getViewNameFromUrl()
-    val accessibleViews = listOf(Login2View.VIEW_NAME, PersonEditView.VIEW_NAME_REGISTER,
-        RegisterAgeRedirectView.VIEW_NAME, SiteTermsDetailView.VIEW_NAME_ACCEPT_TERMS)
-    val activeSession = systemImpl.getAppPref(ACCOUNTS_ACTIVE_SESSION_PREFKEY, this)
-    val logout = activeSession == null && viewName != null
-            && accessibleViews.indexOf(viewName) == -1 && viewName != "/"
-    //Protest access to app's content without being logged in.
-    if(logout){
-        window.location.href = "./"
+
+    var screenRequiresLocationRedirect = false
+
+    try {
+        val ustadUrlComponents = UstadUrlComponents.parse(window.location.href)
+        val accessibleViews = listOf(Login2View.VIEW_NAME, PersonEditView.VIEW_NAME_REGISTER,
+            RedirectView.VIEW_NAME, RegisterAgeRedirectView.VIEW_NAME, SiteTermsDetailView.VIEW_NAME_ACCEPT_TERMS,
+            RegisterMinorWaitForParentView.VIEW_NAME)
+        val activeSession = systemImpl.getAppPref(ACCOUNTS_ACTIVE_SESSION_PREFKEY, this)
+
+        /**
+         * If there is no active session, and the user is not accessing login, registration,
+         * terms, or the age redirect screen (or related), then redirect the browser to the login
+         * screen. Set arg_next so that they will continue to the desired screen after clicking
+         * login.
+         */
+        screenRequiresLocationRedirect = activeSession == null && ustadUrlComponents.viewName !in accessibleViews
+
+        if(screenRequiresLocationRedirect && !routeGuardRedirected) {
+            val urlComponents = UstadUrlComponents.parse(window.location.href)
+            val loginWithNextParamUrl = "${urlComponents.endpoint}#/${Login2View.VIEW_NAME}?${UstadView.ARG_NEXT}=${encodeURIComponent(urlComponents.viewUri)}"
+            Napier.d { "User is not logged in : should not see ${ustadUrlComponents.viewName} . Go to $loginWithNextParamUrl"}
+            routeGuardRedirected = true
+            window.location.href = loginWithNextParamUrl
+        }
+    }catch(e: Exception) {
+        Napier.d { "${window.location.href} not an UstadUrl, not doing anything" }
     }
-    child(component){}
+
+    if(!screenRequiresLocationRedirect) {
+        child(component){ }
+    }
+
 }
 
-fun RBuilder.renderRoutes(systemImpl: UstadMobileSystemImpl) {
+fun RBuilder.renderRoutes(di: DI) {
+    val systemImpl: UstadMobileSystemImpl by di.instance()
+    val accountManager: UstadAccountManager by di.instance()
+
     HashRouter{
         Routes{
             Route{
                 attrs.path = "/"
-                attrs.element = guardRoute(defaultDestination.component, systemImpl)
+                attrs.element = guardRoute(defaultDestination.component, accountManager, systemImpl)
             }
             destinationList.forEach {
                 Route{
                     attrs.path = "/${it.view}"
-                    attrs.element = guardRoute(it.component, systemImpl)
+                    attrs.element = guardRoute(it.component, accountManager, systemImpl)
                 }
             }
         }
@@ -205,11 +248,12 @@ fun RBuilder.umEntityAvatar (
 }
 
 //Handle this when attachment system is in place
-fun RBuilder.umProfileAvatar(attachmentId: Long, fallback: String){
-    val src = null
-    umAvatar(src,variant = AvatarVariant.circular){
-        css (personListItemAvatar)
-        if(src == null) umIcon(fallback, className= "${StyleManager.name}-fallBackAvatarClass")
+fun RBuilder.umProfileAvatar(personUid: Long, fallback: String){
+    withAttachmentLocalUrlLookup(personUid, PersonDetailComponent.PERSON_PICTURE_LOOKUP_ADAPTER) { src ->
+        umAvatar(src, variant = AvatarVariant.circular){
+            css (personListItemAvatar)
+            if(src == null) umIcon(fallback, className= "${StyleManager.name}-fallBackAvatarClass")
+        }
     }
 }
 
@@ -656,6 +700,77 @@ fun RBuilder.renderPersonWithAttemptProgress(
     }
 }
 
+
+fun RBuilder.renderAssignmentSubmittedProgress(
+    item: PersonGroupAssignmentSummary,
+    systemImpl: UstadMobileSystemImpl,
+    onMainList: Boolean = false){
+    umGridContainer{
+        val padding = LinearDimension("4px")
+        css{
+            padding(top = padding, bottom = padding)
+        }
+
+        umItem(GridSize.cells3, if(onMainList) GridSize.cells1 else GridSize.cells2){
+            umProfileAvatar(item.submitterUid, "person")
+        }
+
+        umItem(GridSize.cells6, if(onMainList) GridSize.cells8 else GridSize.cells7){
+            umGridContainer {
+                umItem(GridSize.cells12){
+                    umTypography("${item.name}",
+                        variant = TypographyVariant.h6){
+                        css (alignTextToStart)
+                    }
+                }
+
+                if(!item.latestPrivateComment.isNullOrEmpty()){
+                    umItem(GridSize.cells12, flexDirection = FlexDirection.row){
+                        styledSpan {
+                            css {
+                                padding(right = 4.spacingUnits)
+                            }
+                            umIcon("comment", fontSize = IconFontSize.small){
+                                css{
+                                    marginTop = 1.px
+                                }
+                            }
+                        }
+
+                        umTypography(item.latestPrivateComment,
+                            variant = TypographyVariant.body2,
+                            paragraph = true){
+                            css(alignTextToStart)
+                        }
+                    }
+                }
+            }
+        }
+
+        if(item.fileSubmissionStatus != 0){
+            umItem(GridSize.cells3, flexDirection = FlexDirection.row){
+                styledSpan {
+                    css {
+                        padding(right = 1.spacingUnits)
+                    }
+                    umIcon("check", fontSize = IconFontSize.small){
+                        css{
+                            marginTop = 1.px
+                        }
+                    }
+                }
+
+                umTypography(systemImpl.getString(
+                    STATUS_MAP[item.fileSubmissionStatus] ?: 0, this),
+                    variant = TypographyVariant.body2,
+                    paragraph = true){
+                    css(alignTextToStart)
+                }
+            }
+        }
+    }
+}
+
 fun RBuilder.renderPersonListItemWithNameAndUserName(item: Person){
     umGridContainer(GridSpacing.spacing5) {
         val padding = LinearDimension("4px")
@@ -691,6 +806,9 @@ fun RBuilder.renderListItemWithPersonTitleDescriptionAndAvatarOnLeft(
     title: String,
     subTitle: String? = null,
     iconName: String,
+    systemImpl: UstadMobileSystemImpl,
+    accountManager: UstadAccountManager,
+    context: Any,
     personUid: Long = -1L,
     onClick: (() -> Unit)? = null){
     umGridContainer {
@@ -715,11 +833,7 @@ fun RBuilder.renderListItemWithPersonTitleDescriptionAndAvatarOnLeft(
             }
 
             umItem(GridSize.cells12){
-                umTypography(subTitle,
-                    variant = TypographyVariant.body1,
-                    paragraph = true){
-                    css(alignTextToStart)
-                }
+                linkifyReactTextView(subTitle, systemImpl, accountManager, context)
             }
         }
     }
@@ -732,8 +846,9 @@ fun RBuilder.renderCourseBlockAssignment(
     withAction: Boolean = false, ){
     umGridContainer{
         val padding = LinearDimension("4px")
+        val leftPadding = (item.cbIndentLevel * 3).spacingUnits
         css{
-            padding(top = padding, bottom = padding)
+            padding(top = padding, bottom = padding, left = leftPadding)
         }
 
         umItem(GridSize.cells2, GridSize.cells1){
@@ -806,7 +921,7 @@ fun RBuilder.renderCourseBlockAssignment(
                     }
 
 
-                    if(item.assignment?.mark != null && item.assignment?.mark?.camPenalty != null){
+                    if(item.assignment?.mark != null && item.assignment?.mark?.camPenalty != 0){
                         styledSpan {
                             css {
                                 padding(right = 4.spacingUnits)
@@ -823,30 +938,46 @@ fun RBuilder.renderCourseBlockAssignment(
                         }
                     }
 
-                    if(item.assignment?.progressSummary?.hasMetricsPermission == true){
+                    if(item.assignment?.progressSummary?.hasMetricsPermission == false){
 
-                        styledSpan {
+                        if(item.assignment?.fileSubmissionStatus != 0) {
 
-                            css{
-                                padding(right = 1.spacingUnits)
-                            }
-                            umIcon(
-                                ClazzAssignmentDetailOverviewComponent.ASSIGNMENT_STATUS_MAP[item.assignment?.fileSubmissionStatus
-                                    ?: 0] ?: "",
-                                fontSize = IconFontSize.small
-                            ) {
+                            styledSpan {
+
                                 css {
-                                    marginTop = 1.px
+                                    padding(right = 1.spacingUnits)
+                                }
+                                umIcon(
+                                    ASSIGNMENT_STATUS_MAP[item.assignment?.fileSubmissionStatus
+                                        ?: 0] ?: "",
+                                    fontSize = IconFontSize.small
+                                ) {
+                                    css {
+                                        marginTop = 1.px
+                                    }
                                 }
                             }
                         }
-                        styledSpan {
-                            umTypography(systemImpl.getString(
-                                STATUS_MAP[item.assignment?.fileSubmissionStatus ?: 0]?: 0, this),
-                                variant = TypographyVariant.body1,
-                                paragraph = true){
-                                css(alignTextToStart)
-                            }
+
+                        umTypography(systemImpl.getString(
+                            STATUS_MAP[item.assignment?.fileSubmissionStatus ?: 0]?: 0, this),
+                            variant = TypographyVariant.body1,
+                            paragraph = true){
+                            css(alignTextToStart)
+                        }
+                    }
+
+                    if(item.assignment?.progressSummary?.hasMetricsPermission == true){
+                        umTypography(systemImpl.getString(MessageID.three_num_items_with_name_with_comma,this)
+                            .format("${item.assignment?.progressSummary?.calculateNotSubmittedStudents()}",
+                                systemImpl.getString(MessageID.not_submitted_cap, this),
+                                "${item.assignment?.progressSummary?.submittedStudents}",
+                                systemImpl.getString(MessageID.submitted_cap,this),
+                                "${item.assignment?.progressSummary?.markedStudents}",
+                                systemImpl.getString(MessageID.marked, this)),
+                            variant = TypographyVariant.body1,
+                            paragraph = true){
+                            css(alignTextToStart)
                         }
                     }
                 }
@@ -899,6 +1030,8 @@ fun RBuilder.renderConversationListItem(
     messageOwner: String?,
     message: String?,
     systemImpl: UstadMobileSystemImpl,
+    accountManager: UstadAccountManager,
+    context: Any,
     messageTime: Long
 ){
     umGridContainer(GridSpacing.spacing1,
@@ -922,19 +1055,8 @@ fun RBuilder.renderConversationListItem(
                     else
                         if(systemImpl.isRtlActive()) TextAlign.left else TextAlign.right
                 }
-                umTypography(message, variant = TypographyVariant.body1){
-                    css{
-                        +chatMessageContent
-                        if(left) if(systemImpl.isRtlActive()) +chatRight else +chatLeft
-                        else if(systemImpl.isRtlActive()) +chatLeft else +chatRight
-                        if(left){
-                            backgroundColor = Color(theme.palette.action.selected)
-                        }else {
-                            backgroundColor = Color(theme.palette.primary.dark)
-                            color = Color.white
-                        }
-                    }
-                }
+
+                linkifyReactMessage(message, left, LinkifyOptions(), systemImpl, accountManager, context)
 
                 umTypography(messageTime.toDate()?.fromNow(systemImpl.getDisplayedLocale(this)),
                     variant = TypographyVariant.body2){
@@ -1025,6 +1147,101 @@ fun RBuilder.renderChatListItemWithCounter(
         }
     }
 }
+
+
+fun RBuilder.renderPostsDetail(
+    userFullName: String?,
+    message: String?,
+    latestMessage: String?,
+    time: String?,
+    counter: Int = 0,
+    systemImpl: UstadMobileSystemImpl
+){
+    umGridContainer {
+
+        umItem(GridSize.cells2,GridSize.cells1) {
+            umItemThumbnail("person", avatarVariant = AvatarVariant.circle)
+        }
+
+        umItem(GridSize.cells8, GridSize.cells9) {
+            umTypography(userFullName,
+                variant = TypographyVariant.h6) {
+                css {
+                    +alignTextToStart
+                }
+            }
+
+            umTypography(message,
+                variant = TypographyVariant.body1) {
+                css {
+                    +alignTextToStart
+                    marginTop = 1.spacingUnits
+                }
+            }
+        }
+
+        umItem(GridSize.cells2, alignItems = GridAlignItems.flexEnd) {
+            umItem {
+                umTypography(time,
+                    variant = TypographyVariant.body1) {
+                    css {
+                        +alignCenterItems
+                    }
+                }
+            }
+
+            umItem {
+                umTypography(
+                    systemImpl.getString(MessageID.num_replies, this).format(counter),
+                    variant = TypographyVariant.body1) {
+                    css {
+                        +alignCenterItems
+                    }
+                }
+            }
+        }
+
+
+
+        umItem(GridSize.cells12, flexDirection = FlexDirection.row){
+            if(latestMessage != null){
+                styledSpan {
+                    css {
+                        padding(right = 1.spacingUnits)
+                    }
+                    umIcon("chat", fontSize = IconFontSize.small) {
+                        css {
+                            marginTop = 1.px
+                        }
+                    }
+                }
+                styledSpan {
+                    css{
+                        padding(right = 4.spacingUnits)
+                    }
+                    umTypography(
+                        latestMessage,
+                        variant = TypographyVariant.body1,
+                        paragraph = true){
+                        css(alignTextToStart)
+                    }
+                }
+            }
+
+
+        }
+
+
+
+
+
+
+
+
+    }
+}
+
+
 
 fun RBuilder.renderCourseBlockTextOrModuleListItem(
     blockType: Int,
@@ -1379,6 +1596,201 @@ fun RBuilder.renderTopMainAction(
    }
 }
 
+/**
+ *
+ */
+fun RBuilder.renderCourseBlockCommonFields(
+    block: CourseBlock?,
+    doNotShowBeforeLabel: FieldLabel,
+    startDate: Long,
+    startTimeLabel: FieldLabel,
+    dateSet: (Date) -> Unit,
+    timeZone: String?,
+    completionCriteriaLabel: FieldLabel,
+    completionCriteriaOptions: List<IdOption>?,
+    completionCriteriaSet: (Int) -> Unit,
+    maxPointsLabel: FieldLabel,
+    maxPointsSet: (Int) -> Unit,
+    deadlineDateLabel: FieldLabel,
+    deadlineTimeLabel: FieldLabel,
+    deadlineDate: Long,
+    deadlineDateSet: (Date) -> Unit,
+    gracePeriodDateLabel: FieldLabel,
+    gracePeriodTimeLabel: FieldLabel,
+    gracePeriodDate: Long,
+    gracePeriodVisiblity: Boolean,
+    gracePeriodSet: (Date) -> Unit,
+    penaltyLabel: FieldLabel,
+    penaltySet: (Int) -> Unit,
+    penaltyLabelString: String,
+    minScoreVisible: Boolean,
+    minPointsLabel: FieldLabel? = null,
+    minPointsSet: ((Int) -> Unit)? = null
+){
+
+    umGridContainer(columnSpacing = GridSpacing.spacing4) {
+        umItem(GridSize.cells12, GridSize.cells6 ) {
+
+
+            umDatePicker(
+                label = "${doNotShowBeforeLabel.text}",
+                error = doNotShowBeforeLabel.error,
+                helperText = doNotShowBeforeLabel.errorText,
+                value = startDate.toDate(true),
+                inputVariant = FormControlVariant.outlined,
+                onChange = {
+                    dateSet.invoke(it)
+                })
+
+        }
+
+        umItem(GridSize.cells12, GridSize.cells6 ) {
+            umTimePicker(
+                label = "${startTimeLabel.text}",
+                error = startTimeLabel.error,
+                helperText = startTimeLabel.errorText,
+                value = startDate.toDate(true),
+                inputVariant = FormControlVariant.outlined,
+                onChange = {
+                    dateSet.invoke(it)
+                })
+        }
+    }
+
+    umItem {
+        renderListSectionTitle(timeZone ?: "", TypographyVariant.h6)
+    }
+
+    umGridContainer(columnSpacing = GridSpacing.spacing4) {
+
+        umItem(GridSize.cells12, if(minScoreVisible) GridSize.cells6 else null) {
+
+            umTextFieldSelect(
+                "${completionCriteriaLabel.text}",
+                block?.cbCompletionCriteria.toString(),
+                completionCriteriaLabel.errorText ?: "",
+                error = completionCriteriaLabel.error,
+                values = completionCriteriaOptions?.map {
+                    Pair(it.optionId.toString(), it.toString())
+                }?.toList(),
+                onChange = {
+                    completionCriteriaSet.invoke(it.toIntOrNull() ?: 0)
+                }
+            )
+
+        }
+
+        if(minScoreVisible) {
+            umItem(GridSize.cells12, GridSize.cells6) {
+                umTextField(label = "${minPointsLabel?.text}",
+                    helperText = minPointsLabel?.errorText,
+                    value = block?.cbMinPoints.toString(),
+                    error = minPointsLabel?.error ?: false,
+                    variant = FormControlVariant.outlined,
+                    onChange = {
+                        minPointsSet?.invoke(it.toIntOrNull() ?: 0)
+                    })
+            }
+        }
+    }
+
+
+    umItem(GridSize.cells12) {
+        umTextField(label = "${maxPointsLabel.text}",
+            helperText = maxPointsLabel.errorText,
+            value = block?.cbMaxPoints.toString(),
+            error = maxPointsLabel.error,
+            variant = FormControlVariant.outlined,
+            onChange = {
+                maxPointsSet.invoke(it.toIntOrNull() ?: 0)
+            })
+    }
+
+    umGridContainer(columnSpacing = GridSpacing.spacing4) {
+        umItem(GridSize.cells12, GridSize.cells6 ) {
+
+            umDatePicker(
+                label = "${deadlineDateLabel.text}",
+                error = deadlineDateLabel.error,
+                helperText = deadlineDateLabel.errorText,
+                value = deadlineDate.toDate(true),
+                inputVariant = FormControlVariant.outlined,
+                onChange = {
+                    deadlineDateSet.invoke(it)
+                })
+
+        }
+
+        umItem(GridSize.cells12, GridSize.cells6 ) {
+            umTimePicker(
+                label = "${deadlineTimeLabel.text}",
+                error = deadlineTimeLabel.error,
+                helperText = deadlineTimeLabel.errorText,
+                value = deadlineDate.toDate(true),
+                inputVariant = FormControlVariant.outlined,
+                onChange = {
+                    deadlineDateSet.invoke(it)
+                })
+        }
+
+    }
+
+    if(gracePeriodVisiblity) {
+
+        umGridContainer(columnSpacing = GridSpacing.spacing4) {
+            umItem(GridSize.cells12, GridSize.cells6) {
+
+                umDatePicker(
+                    label = "${gracePeriodDateLabel.text}",
+                    error = gracePeriodDateLabel.error,
+                    helperText = gracePeriodDateLabel.errorText,
+                    value = gracePeriodDate.toDate(true),
+                    inputVariant = FormControlVariant.outlined,
+                    onChange = {
+                        gracePeriodSet.invoke(it)
+                    })
+
+            }
+
+            umItem(GridSize.cells12, GridSize.cells6) {
+                umTimePicker(
+                    label = "${gracePeriodTimeLabel.text}",
+                    error = gracePeriodTimeLabel.error,
+                    helperText = gracePeriodTimeLabel.errorText,
+                    value = gracePeriodDate.toDate(true),
+                    inputVariant = FormControlVariant.outlined,
+                    onChange = {
+                        gracePeriodSet.invoke(it)
+                    })
+            }
+
+
+            umItem(GridSize.cells12, GridSize.cells4) {
+                umTextField(label = "${penaltyLabel.text}",
+                    helperText = penaltyLabel.errorText,
+                    value = block?.cbLateSubmissionPenalty.toString(),
+                    error = penaltyLabel.error,
+                    variant = FormControlVariant.outlined,
+                    onChange = {
+                        penaltySet.invoke(it.toIntOrNull() ?: 0)
+                    }
+                )
+            }
+
+            umItem {
+                renderListSectionTitle(
+                    penaltyLabelString,
+                    TypographyVariant.body2
+                )
+            }
+        }
+    }
+
+
+
+}
+
+
 fun RBuilder.renderListItemWithTitleAndSwitch(title: String, enabled: Boolean, onClick: (Event) -> Unit){
     umGridContainer {
         attrs.onClick = {
@@ -1431,9 +1843,16 @@ fun RBuilder.renderContentEntryListItem(
     downloaded: Boolean = true,
     onClick: ((ContentEntryWithParentChildJoinAndStatusAndMostRecentContainer) -> Unit)? = null,
     mainList: Boolean = true,
+    block: CourseBlockWithCompleteEntity? = null,
     onSecondaryAction: (() -> Unit)? = null){
 
     umGridContainer(columnSpacing = GridSpacing.spacing4) {
+
+        val leftPadding = ((block?.cbIndentLevel ?: 0) * 3).spacingUnits
+        css{
+            padding(left = leftPadding)
+        }
+
         if(onClick != null){
             attrs.onClick = {
                 stopEventPropagation(it)
@@ -1442,16 +1861,22 @@ fun RBuilder.renderContentEntryListItem(
         }
 
         umItem(GridSize.cells4, if(mainList) GridSize.cells2 else GridSize.cells1){
-            umItemThumbnail( if(item.leaf) "class" else "folder", item.thumbnailUrl,width = 80,
-                iconColor = Color(StyleManager.theme.palette.action.disabled),
-                avatarBackgroundColor = Color.transparent)
-            val progress = (item.scoreProgress?.progress ?: 0).toDouble()
-            if(progress > 0){
-                umLinearProgress(progress,
-                    variant = ProgressVariant.determinate){
-                    css (StyleManager.itemContentProgress)
+            withAttachmentLocalUrlLookup(item.contentEntryUid,
+                ContentEntryDetailOverviewComponent.ATTACHMENT_URI_LOOKUP_ADAPTER
+            ) { attachmentSrc ->
+
+                umItemThumbnail( if(item.leaf) "class" else "folder", attachmentSrc ,width = 80,
+                    iconColor = Color(StyleManager.theme.palette.action.disabled),
+                    avatarBackgroundColor = Color.transparent)
+                val progress = (item.scoreProgress?.progress ?: 0).toDouble()
+                if(progress > 0){
+                    umLinearProgress(progress,
+                        variant = ProgressVariant.determinate){
+                        css (StyleManager.itemContentProgress)
+                    }
                 }
             }
+
         }
 
         umItem(GridSize.cells8, if(mainList) GridSize.cells10 else GridSize.cells11){
@@ -1538,33 +1963,6 @@ fun RBuilder.renderContentEntryListItem(
     }
 }
 
-
-fun RBuilder.renderCreateCommentSection(label: String,onClick: () -> Unit){
-    umItem(GridSize.cells12, flexDirection = FlexDirection.row){
-        styledSpan {
-            css{
-                padding(right = 4.spacingUnits)
-            }
-            umIcon("person"){
-                css {
-                    marginTop = LinearDimension("20px")
-                }
-            }
-        }
-
-        umItem(GridSize.cells11){
-            umTextField(
-                disabled = true,
-                label = label,
-                variant = FormControlVariant.outlined){
-                attrs.onClick = {
-                    onClick.invoke()
-                }
-            }
-        }
-
-    }
-}
 
 private fun RBuilder.iconProgress(progress: ContentEntryStatementScoreProgress?): String{
     return when (progress?.isContentComplete()) {
@@ -1745,5 +2143,42 @@ fun RBuilder.renderRawHtmlOnIframe(content: String?){
         attrs{
             src = "data:text/html;charset=utf-8, <div style='color: white !important;'>$content</div>"
         }
+    }
+}
+
+fun RBuilder.renderAddContentEntryOptionsDialog(
+    systemImpl: UstadMobileSystemImpl,
+    showCreateNewFolder: Boolean = true,
+    onClickNewFolder: () -> Unit = { },
+    onClickAddFromLink: () -> Unit,
+    onClickAddFile: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val options = if(showCreateNewFolder) {
+        listOf(UmDialogOptionItem("create_new_folder", MessageID.content_editor_create_new_category,
+            onOptionItemClicked = onClickNewFolder))
+    }else {
+        listOf()
+    } + listOf(UmDialogOptionItem("link",MessageID.add_using_link,
+                MessageID.add_link_description, onClickAddFromLink),
+            UmDialogOptionItem("note_add",MessageID.add_file,
+                MessageID.add_file_description, onClickAddFile))
+
+    renderDialogOptions(systemImpl, options, systemTimeInMillis(), onDialogClosed = onDismiss)
+}
+
+
+/**
+ * Shorthand to use AttachmentImageLookupComponent
+ */
+fun RBuilder.withAttachmentLocalUrlLookup(
+    entityUid: Long,
+    lookupAdapter: AttachmentImageLookupAdapter,
+    block: RBuilder.(localSrc: String?) -> Unit,
+) = child(AttachmentImageLookupComponent::class){
+    attrs.entityUid = entityUid
+    attrs.lookupAdapter = lookupAdapter
+    attrs.contentBlock = { attachmentUri ->
+        block(attachmentUri)
     }
 }

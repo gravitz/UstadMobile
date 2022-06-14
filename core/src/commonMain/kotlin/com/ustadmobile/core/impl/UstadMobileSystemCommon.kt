@@ -6,11 +6,13 @@ import com.ustadmobile.core.account.UstadAccountManager
 import com.ustadmobile.core.generated.locale.MessageID
 import com.ustadmobile.core.impl.UstadMobileConstants.LANGUAGE_NAMES
 import com.ustadmobile.core.util.UMFileUtil
+import com.ustadmobile.core.util.UstadUrlComponents
 import com.ustadmobile.core.util.ext.requirePostfix
 import com.ustadmobile.core.view.*
 import com.ustadmobile.core.view.UstadView.Companion.ARG_INTENT_MESSAGE
 import com.ustadmobile.core.view.UstadView.Companion.ARG_NEXT
 import com.ustadmobile.core.view.UstadView.Companion.ARG_SERVER_URL
+import com.ustadmobile.door.DoorUri
 import com.ustadmobile.door.doorMainDispatcher
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
@@ -234,17 +236,6 @@ abstract class UstadMobileSystemCommon {
     abstract fun getSystemLocale(context: Any): String
 
     /**
-     * Provide language UI directionality
-     * @return TRUE if the UI direction is RTL otherwise it's FALSE
-     */
-    open fun isRtlActive(): Boolean {
-        val languages = getAppPref(AppConfig.KEY_RTL_LANGUAGES, this)
-        return languages?.split(",")?.firstOrNull{it == getDisplayedLocale(this)} != null
-    }
-
-
-
-    /**
      * Provides the language code of the currently active locale. This is different to getLocale. If
      * the locale is currently set to LOCALE_USE_SYSTEM then that language will be resolved and the
      * code returned.
@@ -380,6 +371,42 @@ abstract class UstadMobileSystemCommon {
         return getAppConfigString(AppConfig.KEY_CONTENT_DIR_NAME, DEFAULT_CONTENT_DIR_NAME, context)
     }
 
+
+    abstract fun openLinkInBrowser(url: String, context: Any)
+
+    /**
+     * Handle clicking link that decides to open on the web or to open in the browser
+     */
+    fun handleClickLink(url: String, accountManager: UstadAccountManager, context: Any){
+        if(url.contains(LINK_ENDPOINT_VIEWNAME_DIVIDER)) {
+            val components = UstadUrlComponents.parse(url)
+            if(components.endpoint == accountManager.activeEndpoint.url){
+                goToViewLink(components.viewUri, context)
+            }else{
+                goToDeepLink(url, accountManager, context)
+            }
+        }else{
+            //Send link to system
+            openLinkInBrowser(url, context)
+        }
+    }
+
+    /**
+     * Open the given DoorUri in the default viewer. On Android this means using a VIEW intent.
+     * On the web, this will result in a file download in the browser so the user can open the
+     * file
+     *
+     * @param context
+     * @param doorUri DoorUri of item to open
+     * @param mimeType MimeType to open (used to control which apps will open it on Android)
+     * @param fileName Controls the name given to the file when opened on the browser
+     */
+    abstract fun openFileInDefaultViewer(
+        context: Any,
+        doorUri: DoorUri,
+        mimeType: String?,
+        fileName: String? = null,
+    )
 
     companion object {
         private val MIME_TYPES = mapOf("image/jpg" to "jpg", "image/jpg" to "jpg",
